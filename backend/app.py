@@ -1,0 +1,52 @@
+# backend/app.py
+"""Fraudia Claims – Flask API entry point.
+
+Registers all blueprints and starts the development server.
+"""
+
+import sys
+from pathlib import Path
+
+# Make sure the backend package root is importable
+BACKEND_ROOT = Path(__file__).resolve().parent
+if str(BACKEND_ROOT) not in sys.path:
+    sys.path.insert(0, str(BACKEND_ROOT))
+
+# pyrefly: ignore [missing-import]
+from flask import Flask
+from flask_cors import CORS
+from dotenv import load_dotenv
+
+# Load environment variables from the project root .env
+load_dotenv(BACKEND_ROOT.parent / ".env")
+
+from src.api.health import health_bp
+from src.api.claims import claims_bp
+from src.api.agent import agent_bp
+from src.api.network import network_bp
+from src.api.entities import entities_bp
+from src.api.reports import reports_bp
+from src.api.notion import notion_bp
+
+def create_app() -> Flask:
+    """Application factory."""
+    app = Flask(__name__)
+
+    # Allow the React dev server (default port 5173) and any localhost origin
+    CORS(app, resources={r"/api/*": {"origins": "*"}})
+
+    # Register blueprints
+    app.register_blueprint(health_bp)
+    app.register_blueprint(claims_bp)
+    app.register_blueprint(agent_bp)
+    app.register_blueprint(network_bp)
+    app.register_blueprint(entities_bp)
+    app.register_blueprint(reports_bp)
+    app.register_blueprint(notion_bp)
+
+    return app
+
+
+if __name__ == "__main__":
+    app = create_app()
+    app.run(host="0.0.0.0", port=5000, debug=True)
