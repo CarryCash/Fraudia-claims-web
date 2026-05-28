@@ -34,14 +34,14 @@ class ClaimsAgent:
         proveedores_path = self.data_dir / "proveedores.csv"
         documentos_path = self.data_dir / "documentos.csv"
         
-        # Fallback to raw if processed features aren't built yet
+        # Fallback to the base processed siniestros CSV if the processed features file is not built yet.
         if not siniestros_path.exists():
-            siniestros_path = Path(__file__).resolve().parents[2] / "data" / "raw" / "siniestros.csv"
-            
+            siniestros_path = self.data_dir / "siniestros.csv"
+
         if not siniestros_path.exists():
-            raise FileNotFoundError(f"Claims dataset not found. Please generate the data first.")
-            
-        self.df_sin = pd.read_csv(siniestros_path)
+            raise FileNotFoundError(f"Claims dataset not found. Please generate the processed data first.")
+
+        self.df_sin = pd.read_csv(siniestros_path, sep=';')
         self.df_pol = pd.read_csv(polizas_path) if polizas_path.exists() else pd.DataFrame()
         self.df_aseg = pd.read_csv(asegurados_path) if asegurados_path.exists() else pd.DataFrame()
         self.df_prov = pd.read_csv(proveedores_path) if proveedores_path.exists() else pd.DataFrame()

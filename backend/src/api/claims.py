@@ -8,6 +8,7 @@ Provides REST endpoints to:
 - Generate AI explanation for a claim
 """
 
+import os
 import sys
 from pathlib import Path
 # pyrefly: ignore [missing-import]
@@ -15,7 +16,7 @@ import sqlite3
 # pyrefly: ignore [missing-import]
 import pandas as pd
 # pyrefly: ignore [missing-import]
-from flask import Blueprint, jsonify, request
+from flask import Blueprint, jsonify, request, send_file
 
 # Ensure the backend root is on sys.path so relative imports work
 BACKEND_ROOT = Path(__file__).resolve().parents[2]
@@ -226,6 +227,72 @@ def evaluate_claim(claim_id):
     return jsonify(evaluation)
 
 
+# ── GET /api/claims/<id>/documentos/<doc_id>/preview ────────────────────────────────────
+@claims_bp.route("/<claim_id>/documentos/<doc_id>/preview", methods=["GET"])
+def preview_claim_document(claim_id, doc_id):
+    """Return the raw PDF referenced by a claim document."""
+    try:
+        df_docs = load_documentos()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    claim_docs = df_docs[
+        (df_docs["id_siniestro"].astype(str) == str(claim_id)) &
+        (df_docs["id_documento"].astype(str) == str(doc_id))
+    ]
+    if claim_docs.empty:
+        return jsonify({"error": "Documento no encontrado para este siniestro."}), 404
+
+    pdf_name = str(claim_docs.iloc[0].get("archivo_pdf", "")).strip()
+    if not pdf_name:
+        return jsonify({"error": "El documento no tiene un archivo PDF asociado."}), 404
+
+    if ".." in pdf_name or pdf_name.startswith(("/", "\\")):
+        return jsonify({"error": "Nombre de archivo inválido."}), 400
+
+    project_root = BACKEND_ROOT.parent
+    raw_dir = project_root / "data" / "raw"
+
+    def normalize_name(name: str) -> str:
+        return "".join(ch.lower() for ch in name if ch.isalnum())
+
+    search_name = pdf_name.lower().strip()
+    search_name_no_ext = search_name.removesuffix('.pdf').strip()
+    normalized_search = normalize_name(search_name_no_ext)
+
+    pdf_path = None
+    for root, _, files in os.walk(raw_dir):
+        for filename in files:
+            if not filename.lower().endswith('.pdf'):
+                continue
+            candidate = filename.strip()
+            if candidate == pdf_name:
+                pdf_path = Path(root) / candidate
+                break
+
+            candidate_lower = candidate.lower()
+            if search_name_no_ext and candidate_lower == f"{search_name_no_ext}.pdf":
+                pdf_path = Path(root) / candidate
+                break
+
+            normalized_candidate = normalize_name(candidate_lower)
+            if normalized_search and normalized_search in normalized_candidate:
+                pdf_path = Path(root) / candidate
+                break
+
+            if normalized_search and normalized_candidate in normalized_search:
+                pdf_path = Path(root) / candidate
+                break
+
+        if pdf_path is not None:
+            break
+
+    if pdf_path is None or not pdf_path.exists():
+        return jsonify({"error": f"PDF no encontrado: {pdf_name}"}), 404
+
+    return send_file(pdf_path, mimetype="application/pdf", as_attachment=False)
+
+
 # ── POST /api/claims/<id>/explain ────────────────────────────────────────
 @claims_bp.route("/<claim_id>/explain", methods=["POST"])
 def explain_claim(claim_id):
@@ -257,26 +324,6 @@ def explain_claim(claim_id):
 
 
 # ── Private helpers ──────────────────────────────────────────────────────
-def _predict_ml(row) -> float:
-    """Return the ML model's fraud probability for a single row."""
-    try:
-        import joblib
-        import numpy as np
-
-        model_path = BACKEND_ROOT / "models" / "random_forest_fraud.joblib"
-        features_path = BACKEND_ROOT / "models" / "features.joblib"
-
-        if not model_path.exists():
-            return 0.0
-
-        model = joblib.load(model_path)
-        features = joblib.load(features_path)
-
-        X = np.array([[float(row.get(f, 0) or 0) for f in features]])
-        prob = model.predict_proba(X)[0][1]
-        return round(float(prob), 4)
-    except Exception:
-        return 0.0
 
 
 def _sanitize(record: dict) -> dict:

@@ -68,7 +68,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           className={({ isActive }) => `flex items-center gap-3 py-2.5 rounded-lg transition-colors font-label-md ${isOpen ? 'px-3' : 'justify-center'} ${isActive ? 'text-primary font-bold bg-surface-container-high' : 'text-on-secondary-fixed-variant hover:bg-surface-container-high'}`}
         >
           <span className="material-symbols-outlined text-[20px]" data-icon="recent_patient">recent_patient</span>
-          {isOpen && <span>Entities</span>}
+          {isOpen && <span>Entidades</span>}
         </NavLink>
 
         <NavLink 
@@ -77,7 +77,7 @@ export default function Sidebar({ isOpen, setIsOpen }: SidebarProps) {
           className={({ isActive }) => `flex items-center gap-3 py-2.5 rounded-lg transition-colors font-label-md ${isOpen ? 'px-3' : 'justify-center'} ${isActive ? 'text-primary font-bold bg-surface-container-high' : 'text-on-secondary-fixed-variant hover:bg-surface-container-high'}`}
         >
           <span className="material-symbols-outlined text-[20px]" data-icon="bar_chart">bar_chart</span>
-          {isOpen && <span>Reports</span>}
+          {isOpen && <span>Reportes</span>}
         </NavLink>
         <NavLink
           to="/consultar-data"

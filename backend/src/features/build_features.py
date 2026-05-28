@@ -12,32 +12,29 @@ import numpy as np
 from pathlib import Path
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from src.ingestion.load_data import (
+    load_siniestros,
+    load_polizas,
+    load_asegurados,
+    load_proveedores,
+    load_documentos,
+)
 
 # Paths
 DATA_DIR = os.getenv("DATA_DIR", "data")
-RAW_DIR = os.getenv("RAW_DATA_DIR", os.path.join(DATA_DIR, "raw"))
 PROC_DIR = os.getenv("PROCESSED_DATA_DIR", os.path.join(DATA_DIR, "processed"))
 
 def build_features(save: bool = True) -> pd.DataFrame:
-    """Load raw relational datasets, compute engineered features, and save processed data."""
+    """Load processed relational datasets, compute engineered features, and save processed data."""
     # Ensure processed folder exists
     Path(PROC_DIR).mkdir(parents=True, exist_ok=True)
     
-    # 1. Load raw tables
-    siniestros_path = Path(RAW_DIR) / "siniestros.csv"
-    polizas_path = Path(RAW_DIR) / "polizas.csv"
-    asegurados_path = Path(RAW_DIR) / "asegurados.csv"
-    proveedores_path = Path(RAW_DIR) / "proveedores.csv"
-    documentos_path = Path(RAW_DIR) / "documentos.csv"
-    
-    if not all(p.exists() for p in [siniestros_path, polizas_path, asegurados_path, proveedores_path, documentos_path]):
-        raise FileNotFoundError("Relational raw tables are missing. Please run scripts/generate_synthetic.py first.")
-        
-    df_sin = pd.read_csv(siniestros_path)
-    df_pol = pd.read_csv(polizas_path)
-    df_aseg = pd.read_csv(asegurados_path)
-    df_prov = pd.read_csv(proveedores_path)
-    df_docs = pd.read_csv(documentos_path)
+    # 1. Load processed tables
+    df_sin = load_siniestros(processed=False)
+    df_pol = load_polizas(processed=False)
+    df_aseg = load_asegurados(processed=False)
+    df_prov = load_proveedores(processed=False)
+    df_docs = load_documentos(processed=False)
     
     # Ensure dates are datetime objects
     df_sin["fecha_ocurrencia"] = pd.to_datetime(df_sin["fecha_ocurrencia"])
@@ -50,10 +47,11 @@ def build_features(save: bool = True) -> pd.DataFrame:
     pol_dict = df_pol.set_index("id_poliza")["suma_asegurada"].to_dict()
     df_sin["suma_asegurada"] = df_sin["id_poliza"].map(pol_dict)
     
-    # Match provider info
-    prov_restrict_dict = df_prov.set_index("id_proveedor")["porcentaje_de_casos_observados"].to_dict()
+    # Ensure provider names are available for the legacy blacklist logic
     prov_name_dict = df_prov.set_index("id_proveedor")["nombre"].to_dict()
-    
+    if "beneficiario" not in df_sin.columns and "id_proveedor" in df_sin.columns:
+        df_sin["beneficiario"] = df_sin["id_proveedor"].astype(str).map(prov_name_dict).fillna(df_sin["id_proveedor"].astype(str))
+
     # Blacklisted providers
     blacklist = ["Taller El Chueco", "Taller XYZ", "Clínica Trucha", "Perito Sospechoso"]
     df_sin["proveedor_lista_restrictiva"] = df_sin["beneficiario"].apply(

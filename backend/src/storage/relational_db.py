@@ -1,5 +1,5 @@
 """
-SQLite-backed relational data store built from the raw CSVs.
+SQLite-backed relational data store built from the processed CSVs.
 
 Goal:
 - Materialize relational tables (siniestros, polizas, asegurados, proveedores, documentos)
@@ -57,12 +57,12 @@ def ensure_relational_db(db_path: Path = DEFAULT_DB_PATH) -> Path:
 
 
 def _build_relational_db(conn: sqlite3.Connection) -> None:
-    # Load from raw/processed loaders (they handle date parsing)
-    df_sin = load_siniestros(processed=False)
-    df_pol = load_polizas(processed=False)
-    df_aseg = load_asegurados(processed=False)
-    df_prov = load_proveedores(processed=False)
-    df_docs = load_documentos(processed=False)
+    # Load from processed datasets only. The backend no longer depends on `data/raw`.
+    df_sin = load_siniestros(processed=True)
+    df_pol = load_polizas(processed=True)
+    df_aseg = load_asegurados(processed=True)
+    df_prov = load_proveedores(processed=True)
+    df_docs = load_documentos(processed=True)
 
     # Normalize IDs as strings for reliable joins
     for df, col in [

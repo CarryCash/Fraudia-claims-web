@@ -16,18 +16,18 @@ from sentence_transformers import SentenceTransformer
 
 # Setup paths
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
-RAW_DIR = PROJECT_ROOT / "data" / "raw"
 PROC_DIR = PROJECT_ROOT / "data" / "processed"
+
+from src.ingestion.load_data import load_siniestros, load_polizas
 
 # Restrictive providers list
 LISTA_RESTRICTIVA = ["Taller El Chueco", "Taller XYZ", "Clínica Trucha", "Perito Sospechoso"]
 
 def build_features():
-    print("Loading raw datasets...")
-    # Load raw data
+    print("Loading processed datasets...")
     try:
-        df_sin = pd.read_csv(RAW_DIR / "siniestros.csv")
-        df_pol = pd.read_csv(RAW_DIR / "polizas.csv")
+        df_sin = load_siniestros(processed=False)
+        df_pol = load_polizas(processed=False)
     except FileNotFoundError as e:
         print(f"Error: {e}")
         return
@@ -86,8 +86,12 @@ def build_features():
         df_merged["monto_cercano_suma_asegurada"] = 0
 
     # Document-based features (simulated for now)
-    df_merged["documento_alterado"] = np.where(df_merged["etiqueta_fraude_simulada"] == 1, np.random.binomial(1, 0.4, size=len(df_merged)), 0)
-    df_merged["falta_documento_obligatorio"] = np.where(df_merged["etiqueta_fraude_simulada"] == 1, np.random.binomial(1, 0.3, size=len(df_merged)), 0)
+    if "etiqueta_fraude_simulada" in df_merged.columns:
+        df_merged["documento_alterado"] = np.where(df_merged["etiqueta_fraude_simulada"] == 1, np.random.binomial(1, 0.4, size=len(df_merged)), 0)
+        df_merged["falta_documento_obligatorio"] = np.where(df_merged["etiqueta_fraude_simulada"] == 1, np.random.binomial(1, 0.3, size=len(df_merged)), 0)
+    else:
+        df_merged["documento_alterado"] = 0
+        df_merged["falta_documento_obligatorio"] = 0
 
     # NLP Semantic Similarity using Sentence-Transformers
     print("Loading sentence-transformer model (all-MiniLM-L6-v2) for NLP features...")

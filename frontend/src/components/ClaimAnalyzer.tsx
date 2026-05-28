@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useClaim, useClaims } from '../hooks/useClaims';
-import { explainClaim, type Claim, type ClaimDocument } from '../services/api';
+import { API_BASE, explainClaim, type Claim, type ClaimDocument } from '../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -226,6 +226,20 @@ function DocsDrawer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
                     <p className="mt-2 text-[11px] text-on-surface-variant ml-12">
                       Emitido: {new Date(doc.fecha_emision).toLocaleDateString('es-EC', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </p>
+                  )}
+
+                  {doc.archivo_pdf && (
+                    <div className="mt-4 ml-12 flex items-center gap-2">
+                      <button
+                        type="button"
+                        className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-3 py-2 text-label-sm font-bold text-primary hover:bg-primary/5 transition-colors"
+                        onClick={() => window.open(`${API_BASE}/api/claims/${claim.id_siniestro}/documentos/${doc.id_documento}/preview`, '_blank')}
+                      >
+                        <span className="material-symbols-outlined">picture_as_pdf</span>
+                        Ver PDF
+                      </button>
+                      <span className="text-[11px] text-on-surface-variant">{doc.archivo_pdf}</span>
+                    </div>
                   )}
                 </div>
               );

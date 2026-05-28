@@ -5,7 +5,7 @@
  * only needs changing in one place.
  */
 
-const API_BASE =
+export const API_BASE =
   (import.meta as any).env?.VITE_API_URL ?? '';
 
 // ── Types ────────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ export interface ClaimDocument {
   fecha_emision: string | null;
   inconsistencia_detectada: string;
   observacion: string | null;
+  archivo_pdf?: string;
 }
 
 export interface ClaimsListResponse {
