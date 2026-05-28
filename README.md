@@ -43,7 +43,7 @@ fraudia-claims/
    ```
 2. **Instalar dependencias**
    ```bash
-   pip install -r requirements.txt
+   pip install -r backend/requirements.txt
    ```
 3. **Configurar variables** – Copia `.env.example` a `.env` y agrega tu clave de Gemini API.
 4. **Generar datos sintéticos** – Abre el notebook `notebooks/synthetic/generate_synthetic.ipynb` en Google Colab y ejecútalo.
