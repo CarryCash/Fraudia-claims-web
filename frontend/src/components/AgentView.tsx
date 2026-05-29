@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Search, FileText, TrendingUp, Paperclip, ArrowUp, User, Sparkles, TriangleAlert, Clock, Plus, Trash2, X, Download } from 'lucide-react';
+import { Search, FileText, TrendingUp, ArrowUp, User, Sparkles, TriangleAlert, Clock, Plus, Trash2, X, Download } from 'lucide-react';
 import { chatWithAgent, exportAgentPdf } from '../services/api';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -123,25 +123,6 @@ export default function AgentView() {
     setIsHistoryOpen(false);
   }, []);
 
-  // Update messages in the active session
-  const updateActiveMessages = useCallback(
-    (updater: (prev: Message[]) => Message[]) => {
-      setSessions((prev) =>
-        prev.map((s) => {
-          if (s.id !== activeSessionId) return s;
-          const newMsgs = updater(s.messages);
-          return {
-            ...s,
-            messages: newMsgs,
-            title: extractTitle(newMsgs),
-            updatedAt: Date.now(),
-          };
-        })
-      );
-    },
-    [activeSessionId]
-  );
-
   // Delete a session
   const deleteSession = (sessionId: string) => {
     setSessions((prev) => prev.filter((s) => s.id !== sessionId));
@@ -195,11 +176,11 @@ export default function AgentView() {
         })
       );
       setNextId((n) => n + 2);
-    } catch (e: any) {
+    } catch (e: unknown) {
       const errMsg: Message = {
         id: nextId + 1,
         role: 'agent',
-        text: `⚠️ No se pudo conectar con el agente: ${e.message}\n\nVerifica que el backend esté corriendo en el puerto 5000.`,
+        text: `⚠️ No se pudo conectar con el agente: ${e instanceof Error ? e.message : 'Error desconocido'}\n\nVerifica que el backend esté corriendo en el puerto 5000.`,
       };
       setSessions((prev) =>
         prev.map((s) => {
@@ -232,8 +213,8 @@ export default function AgentView() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-    } catch (e: any) {
-      alert(`No se pudo exportar PDF: ${e.message ?? e}`);
+    } catch (e: unknown) {
+      alert(`No se pudo exportar PDF: ${e instanceof Error ? e.message : String(e)}`);
     }
   };
 
@@ -253,7 +234,14 @@ export default function AgentView() {
 
   return (
     <div className="flex-1 flex flex-col items-center h-[calc(100vh-128px)] overflow-y-auto no-scrollbar pb-40">
-      <div className="w-full max-w-4xl px-4 flex flex-col mt-12 gap-8">
+      <div className="w-full max-w-4xl px-4 flex flex-col mt-12 gap-8 chat-history-print">
+
+        {/* Print Only Header */}
+        <div className="hidden print:block text-center border-b border-outline-variant pb-6 mb-4">
+          <h1 className="text-2xl font-bold text-[#1a1a1a]">Reporte de Auditoría de IA</h1>
+          <p className="text-sm text-gray-500 mt-2">Fraudia Claims - Sistema Avanzado de Detección</p>
+          <p className="text-xs text-gray-400 mt-1">Generado el: {new Date().toLocaleDateString()} a las {new Date().toLocaleTimeString()}</p>
+        </div>
 
         {/* Welcome Header */}
         {showWelcome && (
@@ -269,7 +257,7 @@ export default function AgentView() {
             </div>
 
             {/* Suggestion Cards */}
-            <div className="grid grid-cols-3 gap-4 mb-4">
+            <div className="grid grid-cols-3 gap-4 mb-4 print-hide">
               {SUGGESTIONS.map(({ icon: Icon, text }) => (
                 <button
                   key={text}
@@ -287,7 +275,7 @@ export default function AgentView() {
         {/* Chat History */}
         <div className="flex flex-col gap-8">
           {messages.map((msg) => (
-            <div key={msg.id} className="flex gap-4 items-start">
+            <div key={msg.id} className="flex gap-4 items-start chat-msg-print">
               {/* Avatar */}
               {msg.role === 'user' ? (
                 <div className="w-10 h-10 rounded bg-surface-container-high flex items-center justify-center shrink-0 border border-outline-variant">

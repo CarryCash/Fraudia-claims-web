@@ -7,6 +7,7 @@ from typing import List, Dict, Any
 NOTION_API_URL = "https://api.notion.com/v1"
 NOTION_VERSION = "2022-06-28"
 
+
 def get_notion_headers() -> Dict[str, str]:
     api_key = os.environ.get("NOTION_API_KEY")
     if not api_key:
@@ -17,143 +18,109 @@ def get_notion_headers() -> Dict[str, str]:
         "Notion-Version": NOTION_VERSION
     }
 
-def create_report_page(parent_page_id: str, title: str, stats: Dict[str, Any], claims: List[Dict[str, Any]]) -> str:
+
+def _text_prop(value: str) -> dict:
+    """Build a rich_text property."""
+    return {"rich_text": [{"type": "text", "text": {"content": str(value or "")}}]}
+
+
+def _title_prop(value: str) -> dict:
+    """Build a title property."""
+    return {"title": [{"type": "text", "text": {"content": str(value or "")}}]}
+
+
+def _select_prop(value: str) -> dict:
+    """Build a select property."""
+    v = str(value or "").strip()
+    if not v:
+        return {"select": None}
+    return {"select": {"name": v}}
+
+
+def _number_prop(value) -> dict:
+    """Build a number property."""
+    try:
+        return {"number": float(value)}
+    except (TypeError, ValueError):
+        return {"number": None}
+
+
+def _date_prop(value: str) -> dict:
+    """Build a date property. Expects YYYY-MM-DD or similar."""
+    v = str(value or "").strip()
+    if not v or v.lower() in ("nan", "none", "nat"):
+        return {"date": None}
+    # Take only the date part (first 10 chars)
+    return {"date": {"start": v[:10]}}
+
+
+def _checkbox_prop(value) -> dict:
+    """Build a checkbox property."""
+    if isinstance(value, bool):
+        return {"checkbox": value}
+    return {"checkbox": bool(value)}
+
+
+def _build_row_properties(claim: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Creates a new Notion Page inside a given parent page.
-    The page will contain an executive summary (KPIs) and a table of the high priority claims.
+    Map a claim dict to Notion database properties.
+    Matches the user's database schema exactly.
+    """
+    return {
+        "id_siniestro": _title_prop(claim.get("id_siniestro", "")),
+        "id_poliza": _text_prop(claim.get("id_poliza", "")),
+        "id_asegurado": _text_prop(claim.get("id_asegurado", "")),
+        "ramo": _select_prop(claim.get("ramo", "")),
+        "cobertura": _select_prop(claim.get("cobertura", "")),
+        "fecha_ocurrencia": _date_prop(claim.get("fecha_ocurrencia", "")),
+        "fecha_reporte": _date_prop(claim.get("fecha_reporte", "")),
+        "monto_reclamado": _number_prop(claim.get("monto_reclamado", 0)),
+        "monto_estimado": _number_prop(claim.get("monto_estimado", 0)),
+        "sucursal": _select_prop(claim.get("sucursal", "")),
+        "beneficiario": _text_prop(claim.get("beneficiario", "")),
+        "estado": _select_prop(claim.get("estado", "")),
+        "descripcion": _text_prop(str(claim.get("descripcion", ""))[:2000]),
+        "final_score": _number_prop(claim.get("final_score", 0)),
+        "final_color": _select_prop(claim.get("final_color", "")),
+        "soft_score": _number_prop(claim.get("soft_score", 0)),
+        "hard_score": _number_prop(claim.get("hard_score", 0)),
+        "ml_probability": _number_prop(claim.get("ml_probability", 0)),
+        "is_anomaly": _checkbox_prop(claim.get("is_anomaly", False)),
+        "combined_score": _number_prop(claim.get("combined_score", 0)),
+    }
+
+
+def insert_claims_to_database(database_id: str, claims: List[Dict[str, Any]]) -> int:
+    """
+    Insert claim rows into a Notion database.
+    Returns the number of rows successfully inserted.
     """
     headers = get_notion_headers()
-    
-    # 1. Blocks for the KPIs
-    kpi_blocks = [
-        {
-            "object": "block",
-            "type": "heading_2",
-            "heading_2": {
-                "rich_text": [{"type": "text", "text": {"content": "📊 Resumen Ejecutivo (KPIs)"}}]
-            }
-        },
-        {
-            "object": "block",
-            "type": "callout",
-            "callout": {
-                "rich_text": [
-                    {
-                        "type": "text", 
-                        "text": {"content": f"Ahorro Potencial (Capital en Riesgo): "},
-                        "annotations": {"bold": True}
-                    },
-                    {
-                        "type": "text", 
-                        "text": {"content": f"${stats.get('ahorro_potencial', 0):,.2f}"}
-                    }
-                ],
-                "icon": {"type": "emoji", "emoji": "💰"},
-                "color": "red_background"
-            }
-        },
-        {
-            "object": "block",
-            "type": "callout",
-            "callout": {
-                "rich_text": [
-                    {
-                        "type": "text", 
-                        "text": {"content": f"Monto Total Reclamado: "},
-                        "annotations": {"bold": True}
-                    },
-                    {
-                        "type": "text", 
-                        "text": {"content": f"${stats.get('monto_total', 0):,.2f}"}
-                    }
-                ],
-                "icon": {"type": "emoji", "emoji": "🏦"},
-                "color": "gray_background"
-            }
-        },
-        {
-            "object": "block",
-            "type": "divider",
-            "divider": {}
+    inserted = 0
+
+    for claim in claims:
+        properties = _build_row_properties(claim)
+
+        payload = {
+            "parent": {"type": "database_id", "database_id": database_id},
+            "properties": properties,
         }
-    ]
 
-    # 2. Block for the Table Heading
-    table_heading = {
-        "object": "block",
-        "type": "heading_2",
-        "heading_2": {
-            "rich_text": [{"type": "text", "text": {"content": "🚨 Casos Críticos (Triaje IA)"}}]
-        }
-    }
+        req = urllib.request.Request(
+            f"{NOTION_API_URL}/pages",
+            data=json.dumps(payload).encode("utf-8"),
+            headers=headers,
+            method="POST",
+        )
 
-    # 3. Block for the Table (Columns: ID, Beneficiario, Ramo, Monto, Riesgo)
-    table_rows = []
-    
-    # Header row
-    table_rows.append({
-        "type": "table_row",
-        "table_row": {
-            "cells": [
-                [{"type": "text", "text": {"content": "ID"}}],
-                [{"type": "text", "text": {"content": "Beneficiario"}}],
-                [{"type": "text", "text": {"content": "Ramo"}}],
-                [{"type": "text", "text": {"content": "Monto"}}],
-                [{"type": "text", "text": {"content": "Riesgo"}}]
-            ]
-        }
-    })
+        try:
+            with urllib.request.urlopen(req) as response:
+                response.read()
+                inserted += 1
+        except urllib.error.HTTPError as e:
+            error_info = e.read().decode()
+            print(f"Notion insert error for {claim.get('id_siniestro', '?')}: {e.code} - {error_info}")
+            # Continue with the rest instead of failing entirely
+            continue
 
-    # Data rows (limit to 50 so we don't hit payload limits for the demo)
-    for c in claims[:50]:
-        table_rows.append({
-            "type": "table_row",
-            "table_row": {
-                "cells": [
-                    [{"type": "text", "text": {"content": str(c.get('id_siniestro', ''))}}],
-                    [{"type": "text", "text": {"content": str(c.get('beneficiario', '—'))}}],
-                    [{"type": "text", "text": {"content": str(c.get('ramo', ''))}}],
-                    [{"type": "text", "text": {"content": f"${c.get('monto_reclamado', 0):,.2f}"}}],
-                    [{"type": "text", "text": {"content": str(c.get('final_color', '')).upper()}}]
-                ]
-            }
-        })
-
-    table_block = {
-        "object": "block",
-        "type": "table",
-        "table": {
-            "table_width": 5,
-            "has_column_header": True,
-            "has_row_header": False,
-            "children": table_rows
-        }
-    }
-
-    payload = {
-        "parent": {"type": "page_id", "page_id": parent_page_id},
-        "properties": {
-            "title": [
-                {
-                    "type": "text",
-                    "text": {"content": title}
-                }
-            ]
-        },
-        "children": kpi_blocks + [table_heading, table_block]
-    }
-
-    req = urllib.request.Request(
-        f"{NOTION_API_URL}/pages",
-        data=json.dumps(payload).encode("utf-8"),
-        headers=headers,
-        method="POST"
-    )
-
-    try:
-        with urllib.request.urlopen(req) as response:
-            res_data = json.loads(response.read().decode())
-            return res_data.get("url")
-    except urllib.error.HTTPError as e:
-        error_info = e.read().decode()
-        raise Exception(f"Notion API error: {e.code} - {error_info}")
+    return inserted

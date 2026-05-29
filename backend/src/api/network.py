@@ -159,12 +159,33 @@ def get_network_graph():
                         "type": "provider"
                     })
                     seen_nodes.add(provider_node_id)
-                edges.append({
-                    "id": f"e_{claim_node_id}_{provider_node_id}",
-                    "source": claim_node_id,
-                    "target": provider_node_id,
-                    "type": "claim_to_provider"
+                    edges.append({
+                        "id": f"e_{claim_node_id}_{provider_node_id}",
+                        "source": claim_node_id,
+                        "target": provider_node_id,
+                        "type": "claim_to_provider"
+                    })
+                    
+        # 4. Vehicle Node
+        placa = str(row.get("placa_vehiculo", ""))
+        if placa and placa.lower() not in ["nan", "none", ""]:
+            vehicle_node_id = f"vehicle_{placa.strip()}"
+            if vehicle_node_id not in seen_nodes:
+                nodes.append({
+                    "id": vehicle_node_id,
+                    "label": f"Vehículo {placa.strip()}",
+                    "type": "vehicle",
+                    "id_original": placa.strip()
                 })
+                seen_nodes.add(vehicle_node_id)
+            
+            # Edge: Vehicle -> Claim
+            edges.append({
+                "id": f"e_{vehicle_node_id}_{claim_node_id}",
+                "source": vehicle_node_id,
+                "target": claim_node_id,
+                "type": "vehicle_to_claim"
+            })
             
     return jsonify({
         "nodes": nodes,

@@ -14,12 +14,44 @@ import sqlite3
 from pathlib import Path
 from typing import Dict, Any, List
 from dotenv import load_dotenv
-# pyrefly: ignore [missing-import]
 from google import genai
-from sklearn.feature_extraction.text import TfidfVectorizer
+from google.genai import types
+from sentence_transformers import SentenceTransformer
 from sklearn.metrics.pairwise import cosine_similarity
 
+from src.ingestion.load_data import (
+    load_siniestros,
+    load_polizas,
+    load_asegurados,
+    load_proveedores,
+    load_documentos,
+)
+
 load_dotenv()  # Load GEMINI_API_KEY from .env
+
+def execute_sql_query(query: str) -> str:
+    """Ejecuta una consulta SQL SELECT en la base de datos de siniestros y devuelve los resultados en formato Markdown.
+    Útil para responder preguntas analíticas exactas cruzando datos de siniestros, polizas y proveedores.
+    
+    Args:
+        query: La consulta SQL a ejecutar. Solo se permiten sentencias SELECT o PRAGMA. No intentes modificar los datos.
+    """
+    if not query.strip().upper().startswith(("SELECT", "PRAGMA")):
+        return "Error: Solo se permiten consultas de tipo SELECT o PRAGMA."
+    
+    try:
+        from src.storage.relational_db import DEFAULT_DB_PATH
+        conn = sqlite3.connect(DEFAULT_DB_PATH)
+        df = pd.read_sql_query(query, conn)
+        conn.close()
+        
+        if df.empty:
+            return "La consulta se ejecutó con éxito pero no devolvió resultados."
+            
+        # Limit rows to avoid huge context usage
+        return df.head(50).to_markdown(index=False)
+    except Exception as e:
+        return f"Error al ejecutar la consulta SQL: {str(e)}"
 
 class ClaimsAgent:
     """Agent that answers questions in Spanish about claims, alerts, and providers."""
@@ -27,25 +59,12 @@ class ClaimsAgent:
     def __init__(self, data_dir: str | Path = "data/processed") -> None:
         self.data_dir = Path(data_dir)
         
-        # Load processed datasets
-        siniestros_path = self.data_dir / "siniestros_processed.csv"
-        polizas_path = self.data_dir / "polizas.csv"
-        asegurados_path = self.data_dir / "asegurados.csv"
-        proveedores_path = self.data_dir / "proveedores.csv"
-        documentos_path = self.data_dir / "documentos.csv"
-        
-        # Fallback to the base processed siniestros CSV if the processed features file is not built yet.
-        if not siniestros_path.exists():
-            siniestros_path = self.data_dir / "siniestros.csv"
-
-        if not siniestros_path.exists():
-            raise FileNotFoundError(f"Claims dataset not found. Please generate the processed data first.")
-
-        self.df_sin = pd.read_csv(siniestros_path, sep=';')
-        self.df_pol = pd.read_csv(polizas_path) if polizas_path.exists() else pd.DataFrame()
-        self.df_aseg = pd.read_csv(asegurados_path) if asegurados_path.exists() else pd.DataFrame()
-        self.df_prov = pd.read_csv(proveedores_path) if proveedores_path.exists() else pd.DataFrame()
-        self.df_docs = pd.read_csv(documentos_path) if documentos_path.exists() else pd.DataFrame()
+        # Load processed datasets using normalized column names
+        self.df_sin = load_siniestros()
+        self.df_pol = load_polizas()
+        self.df_aseg = load_asegurados()
+        self.df_prov = load_proveedores()
+        self.df_docs = load_documentos()
 
         # Prefer relational view if available (enables richer joins for the IA)
         try:
@@ -65,9 +84,9 @@ class ClaimsAgent:
             self.df_rel = pd.DataFrame()
         
         # Initialize text vectorizer for semantic queries
-        self.vectorizer = TfidfVectorizer()
+        self.model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
         if "descripcion" in self.df_sin.columns:
-            self.tfidf_matrix = self.vectorizer.fit_transform(self.df_sin["descripcion"].astype(str).tolist())
+            self.embeddings_matrix = self.model.encode(self.df_sin["descripcion"].astype(str).tolist())
             
         # Ensure scoring columns exist in the working dataframe too (not only in the summary copy)
         self._ensure_scores_inplace()
@@ -227,12 +246,12 @@ class ClaimsAgent:
         return summary
 
     def _retrieve_similar_claims(self, query: str, top_k: int = 3) -> str:
-        """Find the top_k most semantically similar claims in the dataset using TF-IDF."""
-        if not hasattr(self, "tfidf_matrix") or self.df_sin.empty:
+        """Find the top_k most semantically similar claims in the dataset using sentence embeddings."""
+        if not hasattr(self, "embeddings_matrix") or self.df_sin.empty:
             return ""
         
-        query_vec = self.vectorizer.transform([query])
-        sims = cosine_similarity(query_vec, self.tfidf_matrix).flatten()
+        query_vec = self.model.encode([query])
+        sims = cosine_similarity(query_vec, self.embeddings_matrix).flatten()
         top_idx = np.argsort(sims)[-top_k:][::-1]
         
         retrieved_df = self.df_sin.iloc[top_idx][
@@ -301,33 +320,40 @@ class ClaimsAgent:
             similar_claims_context = self._retrieve_similar_claims(question)
             
         # Build prompt
-        system_instruction = """
+        from src.storage.relational_db import DEFAULT_DB_PATH
+        schema_text = "ESTRUCTURA DE LA BASE DE DATOS SQL:\n"
+        try:
+            conn = sqlite3.connect(DEFAULT_DB_PATH)
+            cursor = conn.cursor()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table';")
+            tables = cursor.fetchall()
+            for (table_name,) in tables:
+                cursor.execute(f"PRAGMA table_info({table_name});")
+                columns = cursor.fetchall()
+                col_details = [f"{col[1]} ({col[2]})" for col in columns]
+                schema_text += f"- Tabla '{table_name}': {', '.join(col_details)}\n"
+            conn.close()
+        except Exception:
+            schema_text += "No se pudo extraer el esquema.\n"
+
+        system_instruction = f"""
         Eres un agente experto en análisis de fraude de seguros y auditoría para "Aseguradora del Sur" (Ecuador).
-        Tu función es ayudar a los analistas humanos a revisar reclamos sospechosos utilizando información consolidada del dataset.
+        Tu función es ayudar a los analistas humanos a revisar reclamos sospechosos utilizando información consolidada del dataset y la base de datos.
         Responde SIEMPRE en español con un tono profesional, analítico y preventivo.
 
+        {schema_text}
+        
         PAUTAS IMPORTANTES:
-        - Utiliza las tablas de estadísticas y los datos provistos en el contexto para dar respuestas exactas y numéricas.
+        - Puedes (y debes) utilizar la herramienta `execute_sql_query` cuando necesites extraer datos precisos de la base de datos, calcular promedios, contar siniestros por proveedor, o buscar desviaciones en montos.
+        - Utiliza las tablas de estadísticas y los datos devueltos por tus consultas SQL para dar respuestas exactas y numéricas.
+        - Cuando menciones o listes siniestros específicos (por ejemplo, siniestros similares o de mayor riesgo), SIEMPRE preséntalos estructurados en una tabla Markdown clara con columnas relevantes (ej. ID Siniestro, Ramo, Cobertura, Monto Reclamado, Descripción).
         - No inventes estadísticas si no están en las tablas; cita las cifras exactas que aparecen en el "Resumen Consolidado".
         - Explica que el sistema genera alertas de posible fraude para que un analista humano decida, y nunca acuses formalmente a un cliente de fraude.
         - El dólar de EE.UU. (USD $) es la moneda oficial de Ecuador, así que presenta los montos financieros en dólares con el formato adecuado.
         - Enfócate en la zona sur de Ecuador (Loja, Cuenca, Machala, Zamora, Azogues) y menciona estos nombres con orgullo local.
         """
         
-        prompt = f"""
-{system_instruction}
-
-CONTEXTO DEL DATASET DE SINIESTROS DE ASEGURADORA DEL SUR:
-{self.dataset_summary}
-
-{specific_context}
-
-{similar_claims_context}
-
-Pregunta del Analista: "{question}"
-
-Respuesta del Agente de IA:
-"""
+        full_prompt = f"CONTEXTO DEL DATASET DE SINIESTROS DE ASEGURADORA DEL SUR:\n{self.dataset_summary}\n\n{specific_context}\n\n{similar_claims_context}\n\nPregunta del Analista: \"{question}\""
         
         try:
             api_key = os.getenv("GEMINI_API_KEY")
@@ -336,10 +362,16 @@ Respuesta del Agente de IA:
                        "Por favor, configure la clave de la API para interactuar con el agente conversacional."
 
             client = genai.Client(api_key=api_key)
-            response = client.models.generate_content(
-                model="gemini-3.1-flash-lite",
-                contents=prompt,
+            
+            # Configure Function Calling
+            config = types.GenerateContentConfig(
+                system_instruction=system_instruction,
+                temperature=0.2,
+                tools=[execute_sql_query]
             )
+            
+            chat = client.chats.create(model="gemini-3.1-flash-lite", config=config)
+            response = chat.send_message(full_prompt)
             return response.text.strip()
         except Exception as e:
             return f"Error en la interacción con el Agente de Gemini: {str(e)}\n\n" \

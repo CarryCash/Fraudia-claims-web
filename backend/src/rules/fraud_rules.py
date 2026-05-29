@@ -219,6 +219,12 @@ def compute_soft_score(record) -> Tuple[int, List[str]]:
         score += 4
         alerts.append("Monto reclamado >=95% de suma asegurada o 50% de prom. reparación: 4 pts")
         
+    # 15. Detección de Red de Fraude (Carrusel) con NetworkX
+    alerta_red = int(record.get("alerta_red_fraude", 0))
+    if alerta_red == 1:
+        score += 15
+        alerts.append("Alerta de Red/Carrusel (Detectado por Análisis de Grafos): 15 pts")
+        
     return min(score, 100), alerts
 
 # ---------------------------------------------------------------------------
@@ -275,10 +281,23 @@ def evaluate_record(record) -> Dict:
         else:
             final_color = "rojo"
             
+    hard_descriptions = {
+        "RF01": "RF01: Cobertura Robo y Pérdida Total",
+        "RF02": "RF02: Falsificación o Adulteración Documental",
+        "RF03": "RF03: Coincidencia con Lista Restrictiva",
+        "RF04": "RF04: Dinámica Físicamente Imposible",
+        "RF05": "RF05: Siniestro al Borde de Vigencia",
+        "RF06": "RF06: Demora Atípica en Denuncia (>4 días)",
+        "RF07": "RF07: Narrativa Idéntica (Clonada)"
+    }
+    hard_alerts_text = [hard_descriptions.get(c, c) for c in hard_triggered]
+    
     return {
         "id_siniestro": rec_dict.get("id_siniestro"),
         "hard_flag": len(hard_triggered) > 0,
         "hard_triggered": hard_triggered,
+        "hard_alerts": hard_alerts_text,
+        "hard_score": 100 if len(hard_triggered) > 0 else 0,
         "soft_score": soft_score,
         "soft_alerts": soft_alerts,
         "final_score": final_score,

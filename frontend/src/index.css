@@ -19,3 +19,79 @@
   .no-scrollbar::-webkit-scrollbar { display: none; }
   .no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
 }
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  /* Ocultar elementos de UI */
+  aside, header, nav, .fixed.bottom-0, .print-hide {
+    display: none !important;
+  }
+  
+  /* Ajustar contenedor principal */
+  main {
+    margin: 0 !important;
+    padding: 0 !important;
+    background-color: white !important;
+  }
+  
+  /* Contenedor del chat optimizado para lectura */
+  .chat-history-print {
+    max-width: 800px !important;
+    margin: 0 auto !important;
+    padding: 20px !important;
+  }
+  
+  /* Forzar colores nítidos */
+  body {
+    background-color: white !important;
+    color: #1a1a1a !important;
+    font-size: 12pt;
+  }
+  
+  /* Burbuja del Agente */
+  .bg-surface-container-lowest {
+    border: none !important;
+    box-shadow: none !important;
+    background-color: #f7f7f8 !important; /* Gris muy claro tipo ChatGPT */
+    color: #1a1a1a !important;
+    border-radius: 8px !important;
+    padding: 16px !important;
+  }
+  
+  /* Mostrar avatar de IA en color primario */
+  .bg-primary {
+    background-color: #0d9488 !important; /* teal-600 */
+    color: white !important;
+  }
+  
+  .text-on-primary {
+    color: white !important;
+  }
+
+  /* Mostrar avatar de usuario en gris */
+  .bg-surface-container-high {
+    background-color: #e5e7eb !important;
+    border: none !important;
+  }
+
+  /* Textos nítidos */
+  .text-on-surface, .text-on-surface-variant {
+    color: #1a1a1a !important;
+  }
+
+  /* Evitar saltos de página a mitad de mensaje */
+  .chat-msg-print {
+    page-break-inside: avoid;
+    margin-bottom: 24px !important;
+  }
+
+  /* Elementos solo visibles en impresión */
+  .print-only {
+    display: block !important;
+  }
+}
+

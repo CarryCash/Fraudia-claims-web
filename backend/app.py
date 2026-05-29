@@ -31,7 +31,9 @@ from src.api.search import search_bp
 
 def create_app() -> Flask:
     """Application factory."""
-    app = Flask(__name__)
+    # Configure Flask to serve the React build folder
+    static_folder = str((BACKEND_ROOT.parent / "frontend" / "dist").resolve())
+    app = Flask(__name__, static_folder=static_folder, static_url_path="/")
 
     # Allow the React dev server (default port 5173) and any localhost origin
     CORS(app, resources={r"/api/*": {"origins": "*"}})
@@ -45,6 +47,18 @@ def create_app() -> Flask:
     app.register_blueprint(reports_bp)
     app.register_blueprint(notion_bp)
     app.register_blueprint(search_bp)
+
+    # Catch-all route to serve React app for non-API routes
+    @app.route("/", defaults={"path": ""})
+    @app.route("/<path:path>")
+    def serve_react(path):
+        if path.startswith("api/"):
+            return {"error": "Not found"}, 404
+        import os
+        if path != "" and os.path.exists(os.path.join(app.static_folder, path)):
+            return app.send_static_file(path)
+        else:
+            return app.send_static_file("index.html")
 
     return app
 

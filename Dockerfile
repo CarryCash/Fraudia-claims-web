@@ -1,24 +1,46 @@
+# Stage 1: Build the React Frontend
+FROM node:20-alpine AS frontend-builder
+WORKDIR /app/frontend
+
+# Copy package management files
+COPY frontend/package.json frontend/pnpm-lock.yaml* ./
+
+# Install pnpm and dependencies
+RUN npm install -g pnpm && pnpm install
+
+# Copy source code and build
+COPY frontend/ ./
+RUN pnpm build
+
+
+# Stage 2: Build the Python Backend and serve
 FROM python:3.11-slim
-
-# Install system dependencies
-RUN apt-get update && apt-get install -y build-essential && rm -rf /var/lib/apt/lists/*
-
-# Create app directory
 WORKDIR /app
 
-# Copy requirements and install
-COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt
+# Install system dependencies (needed for fpdf2 and SQLite)
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy project files
-COPY . .
+# Copy backend requirements and install
+COPY backend/requirements.txt ./backend/
+RUN pip install --no-cache-dir -r backend/requirements.txt
 
-# Expose Streamlit default port
-EXPOSE 8501
+# Copy the backend source code
+COPY backend/ ./backend/
+COPY data/ ./data/
+COPY docs/ ./docs/
 
-# Set environment variables for Streamlit
-ENV STREAMLIT_SERVER_HEADLESS=true
-ENV STREAMLIT_SERVER_ENABLECORS=false
+# Copy the built React app from Stage 1 into the location Flask expects
+COPY --from=frontend-builder /app/frontend/dist ./frontend/dist
+
+# Expose Flask default port
+EXPOSE 5000
+
+# Set environment variables
+ENV FLASK_APP=backend/app.py
+ENV FLASK_ENV=production
+ENV PYTHONUNBUFFERED=1
 
 # Run the app
-CMD ["streamlit", "run", "src/app/main.py", "--server.port=8501", "--server.enableCORS=false"]
+CMD ["python", "backend/app.py"]

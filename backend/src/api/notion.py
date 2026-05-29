@@ -4,8 +4,7 @@ import traceback
 from datetime import datetime
 # pyrefly: ignore [missing-import]
 from flask import Blueprint, jsonify, request
-from src.integrations.notion_client import create_report_page
-from src.api.reports import get_report_stats
+from src.integrations.notion_client import insert_claims_to_database
 
 notion_bp = Blueprint("notion", __name__, url_prefix="/api/notion")
 
@@ -14,32 +13,28 @@ def export_to_notion():
     try:
         data = request.json or {}
         claims = data.get("claims", [])
-        
-        parent_page_id = os.environ.get("NOTION_PAGE_ID")
-        if not parent_page_id:
-            return jsonify({"error": "NOTION_PAGE_ID no está configurado."}), 500
 
-        # Obtener los KPIs actuales usando la misma lógica que los reportes
-        # Para esto llamamos a la función subyacente o hacemos fetch
-        # Como get_report_stats es una vista de Flask, extraemos su response JSON
-        stats_response = get_report_stats()
-        stats_data = stats_response.get_json() if hasattr(stats_response, 'get_json') else {}
+        database_id = os.environ.get("NOTION_DATABASE_ID")
+        if not database_id:
+            return jsonify({"error": "NOTION_DATABASE_ID no está configurado en .env"}), 500
 
-        if "error" in stats_data:
-            stats_data = {"ahorro_potencial": 0, "monto_total": 0}
+        if not claims:
+            return jsonify({"error": "No hay siniestros para exportar."}), 400
 
-        title = f"Reporte Ejecutivo Fraudia - {datetime.now().strftime('%Y-%m-%d %H:%M')}"
-        
-        notion_url = create_report_page(
-            parent_page_id=parent_page_id,
-            title=title,
-            stats=stats_data,
-            claims=claims
-        )
-        
-        return jsonify({"success": True, "url": notion_url})
+        inserted = insert_claims_to_database(database_id, claims)
+
+        # Build the Notion database URL for the user
+        clean_id = database_id.replace("-", "")
+        notion_url = f"https://www.notion.so/{clean_id}"
+
+        return jsonify({
+            "success": True,
+            "url": notion_url,
+            "inserted": inserted,
+            "total": len(claims),
+        })
 
     except Exception as e:
-        print(f"Error exporting to notion: {e}", file=sys.stderr)
+        print(f"Error exporting to Notion: {e}", file=sys.stderr)
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500

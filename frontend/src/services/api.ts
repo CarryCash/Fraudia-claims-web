@@ -35,6 +35,7 @@ export interface Claim {
   dias_entre_ocurrencia_reporte?: number;
   documentos_completos?: string;
   documentos?: ClaimDocument[];
+  is_anomaly?: boolean;
 }
 
 export interface ClaimDocument {
@@ -65,6 +66,7 @@ export interface EvaluationResponse {
   hard_alerts: string[];
   ml_probability: number;
   combined_score: number;
+  is_anomaly?: boolean;
 }
 
 export interface ExplainResponse {
@@ -135,25 +137,6 @@ export interface SearchResponse {
   policies: SearchPolicyHit[];
   providers: SearchProviderHit[];
   insured: SearchInsuredHit[];
-}
-
-export interface SriValidationResponse {
-  valid_ruc: boolean;
-  ruc: string;
-  tipo?: string;
-  sucursal?: string;
-  main_branch?: boolean;
-  message?: string;
-  sri?: Record<string, any>;
-  exists?: boolean;
-  error?: string;
-}
-
-export async function validateSri(ruc: string): Promise<SriValidationResponse> {
-  return apiFetch<SriValidationResponse>(`/api/validar-sri`, {
-    method: 'POST',
-    body: JSON.stringify({ ruc }),
-  });
 }
 
 export async function searchGlobal(q: string): Promise<SearchResponse> {
@@ -252,7 +235,7 @@ export async function chatWithAgent(question: string): Promise<ChatResponse> {
 export interface NetworkNode {
   id: string;
   label: string;
-  type: 'claim' | 'insured' | 'provider';
+  type: 'claim' | 'insured' | 'provider' | 'vehicle';
   score?: number;
   color?: 'rojo' | 'amarillo' | 'verde';
   ramo?: string;

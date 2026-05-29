@@ -23,6 +23,7 @@ export default function NetworkView() {
   const [showClaims, setShowClaims] = useState(true);
   const [showInsured, setShowInsured] = useState(true);
   const [showProviders, setShowProviders] = useState(true);
+  const [showVehicles, setShowVehicles] = useState(true);
 
   // Search query
   const [searchQuery, setSearchQuery] = useState('');
@@ -105,7 +106,7 @@ export default function NetworkView() {
   // Reheat simulation on filters or search change
   useEffect(() => {
     alphaRef.current = 1.0;
-  }, [showClaims, showInsured, showProviders, searchQuery]);
+  }, [showClaims, showInsured, showProviders, showVehicles, searchQuery]);
 
   // 2. Physics Simulation Loop (Fruchterman-Reingold / Force Directed)
   useEffect(() => {
@@ -231,6 +232,7 @@ export default function NetworkView() {
       if (node.type === 'claim' && !showClaims) return false;
       if (node.type === 'insured' && !showInsured) return false;
       if (node.type === 'provider' && !showProviders) return false;
+      if (node.type === 'vehicle' && !showVehicles) return false;
 
       // Search match
       if (searchQuery.trim()) {
@@ -243,7 +245,7 @@ export default function NetworkView() {
 
       return true;
     });
-  }, [simNodes, showClaims, showInsured, showProviders, searchQuery]);
+  }, [simNodes, showClaims, showInsured, showProviders, showVehicles, searchQuery]);
 
   const filteredEdges = useMemo(() => {
     const visibleNodeIds = new Set(filteredNodes.map((n) => n.id));
@@ -494,6 +496,9 @@ export default function NetworkView() {
             } else if (node.type === 'provider') {
               nodeIcon = 'build';
               bgClass = 'border-primary text-primary bg-primary-container/10 border-2';
+            } else if (node.type === 'vehicle') {
+              nodeIcon = 'directions_car';
+              bgClass = 'border-tertiary text-tertiary bg-tertiary-container/10 border-2';
             }
 
             return (
@@ -582,6 +587,16 @@ export default function NetworkView() {
               <div className="w-3.5 h-3.5 rounded-sm bg-primary/20 border border-primary shrink-0" />
               <span className="text-label-md text-on-surface font-medium">Proveedores (Talleres/Clínicas)</span>
             </label>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                className="form-checkbox w-4.5 h-4.5 text-primary border-outline-variant rounded focus:ring-primary"
+                checked={showVehicles}
+                onChange={(e) => setShowVehicles(e.target.checked)}
+              />
+              <div className="w-3.5 h-3.5 rounded-sm bg-tertiary-container border border-tertiary shrink-0" />
+              <span className="text-label-md text-on-surface font-medium">Vehículos</span>
+            </label>
           </div>
         </div>
 
@@ -613,7 +628,7 @@ export default function NetworkView() {
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-10 h-10 rounded-lg bg-surface-container-high border border-outline-variant flex items-center justify-center text-on-surface-variant">
                   <span className="material-symbols-outlined text-[22px]">
-                    {selectedNode.type === 'claim' ? 'description' : selectedNode.type === 'provider' ? 'build' : 'person'}
+                    {selectedNode.type === 'claim' ? 'description' : selectedNode.type === 'provider' ? 'build' : selectedNode.type === 'vehicle' ? 'directions_car' : 'person'}
                   </span>
                 </div>
                 <div>
@@ -621,7 +636,7 @@ export default function NetworkView() {
                     {selectedNode.label}
                   </h3>
                   <p className="text-label-sm text-on-surface-variant capitalize">
-                    Entidad de tipo {selectedNode.type === 'claim' ? 'siniestro' : selectedNode.type === 'provider' ? 'proveedor' : 'asegurado'}
+                    Entidad de tipo {selectedNode.type === 'claim' ? 'siniestro' : selectedNode.type === 'provider' ? 'proveedor' : selectedNode.type === 'vehicle' ? 'vehículo' : 'asegurado'}
                   </p>
                 </div>
               </div>

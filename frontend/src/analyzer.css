@@ -450,3 +450,21 @@
   width: 100%;
   justify-content: center;
 }
+
+/* Estilos específicos para el contenedor del análisis */
+.aianalisis-content h2 {
+  font-size: 1.25rem; /* text-xl */
+  font-weight: 700;    /* font-bold */
+  color: var(--md-sys-color-on-surface); /* O el color de tu tema */
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.aianalisis-content p {
+  margin-bottom: 1rem;
+}
+
+.aianalisis-content strong {
+  font-weight: 700;
+  color: #000; /* O el color destacado que uses en modo claro/oscuro */
+}

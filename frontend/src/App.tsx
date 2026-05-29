@@ -3,14 +3,12 @@ import { Routes, Route } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Dashboard from './components/Dashboard';
-import AlertsPanel from './components/AlertsPanel';
 import ClaimAnalyzer from './components/ClaimAnalyzer';
 import AgentView from './components/AgentView';
 import NetworkView from './components/NetworkView';
-import ConsultarData from './components/ConsultarData';
 
 import EntitiesView from './components/EntitiesView';
-import ReportsView from './components/ReportsView';
+
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
@@ -31,10 +29,8 @@ function App() {
           } />
           <Route path="/analyzer" element={<ClaimAnalyzer />} />
           <Route path="/agent" element={<AgentView />} />
-          <Route path="/consultar-data" element={<ConsultarData />} />
           <Route path="/network" element={<NetworkView />} />
           <Route path="/entities" element={<EntitiesView />} />
-          <Route path="/reports" element={<ReportsView />} />
           <Route path="*" element={<div className="p-8">En construcción...</div>} />
         </Routes>
       </main>

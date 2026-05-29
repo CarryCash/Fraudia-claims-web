@@ -11,6 +11,7 @@ Provides REST endpoints to:
 import os
 import sys
 from pathlib import Path
+from typing import Any
 # pyrefly: ignore [missing-import]
 import sqlite3
 # pyrefly: ignore [missing-import]
@@ -31,7 +32,7 @@ from src.ingestion.load_data import (
     load_documentos,
 )
 from src.rules.fraud_rules import evaluate_record
-from src.explainability.explain_score import combine_scores, generate_explanation
+from src.explainability.explain_score import combine_scores, generate_explanation, _predict_ml
 from src.storage.relational_db import DEFAULT_DB_PATH, ensure_relational_db
 
 claims_bp = Blueprint("claims", __name__, url_prefix="/api/claims")
@@ -56,6 +57,36 @@ def _load_claims_df():
         return load_siniestros(processed=True)
     except FileNotFoundError:
         return load_siniestros(processed=False)
+
+def _apply_ml_to_evaluation(row, evaluation):
+    """Run ML prediction and merge into the rules evaluation."""
+    ml_prob, is_anomaly = _predict_ml(row)
+    
+    if is_anomaly:
+        # Append alert if not already present
+        alert_msg = "Alerta de ML: Comportamiento Atípico (Isolation Forest)"
+        if alert_msg not in evaluation.get("soft_alerts", []):
+            evaluation.setdefault("soft_alerts", []).append(alert_msg)
+            evaluation["soft_score"] = min(evaluation.get("soft_score", 0) + 15, 100)
+            
+    total_score = combine_scores(evaluation.get("soft_score", 0), ml_prob)
+    evaluation["ml_probability"] = ml_prob
+    evaluation["is_anomaly"] = is_anomaly
+    evaluation["combined_score"] = total_score
+    
+    # Overwrite final_score and final_color for the frontend
+    current_final = evaluation.get("final_score", 0)
+    new_final = max(current_final, total_score)
+    evaluation["final_score"] = new_final
+    
+    if new_final >= 80:
+        evaluation["final_color"] = "rojo"
+    elif new_final >= 50:
+        evaluation["final_color"] = "amarillo"
+    else:
+        evaluation["final_color"] = "verde"
+        
+    return evaluation
 
 
 @claims_bp.route("/manual", methods=["POST"])
@@ -143,10 +174,39 @@ def list_claims():
     # Optional colour filter
     color_filter = request.args.get("color")
 
-    # Evaluate all records so we can filter/sort by score
+    from src.explainability.explain_score import _bulk_predict_ml
+    ml_probs, is_anomalies = _bulk_predict_ml(df)
+
     results = []
-    for _, row in df.iterrows():
+    for i, (idx, row) in enumerate(df.iterrows()):
         evaluation = evaluate_record(row)
+        
+        # Override with precomputed ML predictions
+        ml_prob = float(ml_probs[i])
+        is_anomaly = bool(is_anomalies[i])
+        
+        if is_anomaly:
+            alert_msg = "Alerta de ML: Comportamiento Atípico (Isolation Forest)"
+            if alert_msg not in evaluation.get("soft_alerts", []):
+                evaluation.setdefault("soft_alerts", []).append(alert_msg)
+                evaluation["soft_score"] = min(evaluation.get("soft_score", 0) + 15, 100)
+                
+        total_score = combine_scores(evaluation.get("soft_score", 0), ml_prob)
+        evaluation["ml_probability"] = ml_prob
+        evaluation["is_anomaly"] = is_anomaly
+        evaluation["combined_score"] = total_score
+        
+        current_final = evaluation.get("final_score", 0)
+        new_final = max(current_final, total_score)
+        evaluation["final_score"] = new_final
+        
+        if new_final >= 80:
+            evaluation["final_color"] = "rojo"
+        elif new_final >= 50:
+            evaluation["final_color"] = "amarillo"
+        else:
+            evaluation["final_color"] = "verde"
+
         if color_filter and evaluation["final_color"] != color_filter:
             continue
         record = row.to_dict()
@@ -183,6 +243,7 @@ def get_claim(claim_id):
 
     row = match.iloc[0]
     evaluation = evaluate_record(row)
+    evaluation = _apply_ml_to_evaluation(row, evaluation)
     record = row.to_dict()
     record.update(evaluation)
 
@@ -216,13 +277,7 @@ def evaluate_claim(claim_id):
 
     row = match.iloc[0]
     evaluation = evaluate_record(row)
-
-    # Attempt ML prediction
-    ml_prob = _predict_ml(row)
-
-    total_score = combine_scores(evaluation["soft_score"], ml_prob)
-    evaluation["ml_probability"] = ml_prob
-    evaluation["combined_score"] = total_score
+    evaluation = _apply_ml_to_evaluation(row, evaluation)
 
     return jsonify(evaluation)
 
@@ -308,36 +363,53 @@ def explain_claim(claim_id):
 
     row = match.iloc[0]
     evaluation = evaluate_record(row)
-    ml_prob = _predict_ml(row)
+    evaluation = _apply_ml_to_evaluation(row, evaluation)
+        
     explanation = generate_explanation(
         claim=row.to_dict(),
         rule_score=evaluation["soft_score"],
-        ml_prob=ml_prob,
+        ml_prob=evaluation["ml_probability"],
         alerts=evaluation["soft_alerts"],
+        is_anomaly=evaluation["is_anomaly"]
     )
 
     return jsonify({
         "id_siniestro": claim_id,
         "explanation": explanation,
-        "combined_score": combine_scores(evaluation["soft_score"], ml_prob),
+        "combined_score": evaluation["combined_score"],
     })
 
 
 # ── Private helpers ──────────────────────────────────────────────────────
 
 
-def _sanitize(record: dict) -> dict:
-    """Convert NaN / Timestamps to JSON-safe values."""
+def _sanitize(obj: Any) -> Any:
+    """Recursively convert NaN / Timestamps / Numpy types to JSON-safe values."""
     import math
-    clean = {}
-    for k, v in record.items():
-        if isinstance(v, float) and math.isnan(v):
-            clean[k] = None
-        elif hasattr(v, "isoformat"):
-            clean[k] = v.isoformat()
-        else:
-            clean[k] = v
-    return clean
+    import numpy as np
+    
+    if isinstance(obj, dict):
+        return {k: _sanitize(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_sanitize(v) for v in obj]
+    elif isinstance(obj, float):
+        if math.isnan(obj) or math.isinf(obj):
+            return None
+        return obj
+    elif isinstance(obj, (np.bool_, bool)):
+        return bool(obj)
+    elif isinstance(obj, (np.integer, int)):
+        return int(obj)
+    elif isinstance(obj, (np.floating, float)):
+        if np.isnan(obj) or np.isinf(obj):
+            return None
+        return float(obj)
+    elif hasattr(obj, "isoformat"):
+        return obj.isoformat()
+    elif pd.isna(obj):
+        return None
+    else:
+        return obj
 
 
 def _sanitize_list(records: list) -> list:

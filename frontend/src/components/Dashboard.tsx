@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FileText, TriangleAlert, PiggyBank, Download, Filter, RefreshCw, Sparkles, CheckSquare, Settings2, Trash2, WifiOff } from 'lucide-react';
+import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
 import { createManualClaim, type Claim } from '../services/api';
 
@@ -41,15 +41,16 @@ function formatDate(s: string | undefined): string {
 }
 
 function norm(s: unknown): string {
-  return String(s ?? '').trim().toLowerCase();
+  if (typeof s === 'string') return s.trim().toLowerCase();
+  return '';
 }
 
 // ── Skeleton ──────────────────────────────────────────────────────────────────
-function SkeletonRow() {
+function SkeletonRow({ id }: { readonly id: string }) {
   return (
     <tr className="animate-pulse border-b border-outline-variant/30">
-      {[...Array(7)].map((_, i) => (
-        <td key={i} className="p-4">
+      {[...new Array(7)].map((_, i) => (
+        <td key={`${id}-${i}`} className="p-4">
           <div className="h-4 bg-surface-container-high rounded w-3/4" />
         </td>
       ))}
@@ -190,9 +191,10 @@ export default function Dashboard() {
   }, [filteredClaims, priorityMode]);
 
   // Reset pagination when filters change
-  useMemo(() => {
+  const shouldResetPagination = activeTab || priorityMode;
+  if (currentPage !== 1 && shouldResetPagination) {
     setCurrentPage(1);
-  }, [activeTab, priorityMode]);
+  }
 
   // 3. Pagination
   const totalPages = Math.ceil(sortedClaims.length / itemsPerPage);
@@ -247,7 +249,7 @@ export default function Dashboard() {
     link.setAttribute('download', `exportacion_siniestros_${new Date().toISOString().split('T')[0]}.csv`);
     document.body.appendChild(link);
     link.click();
-    document.body.removeChild(link);
+    link.remove();
     
     // Clear selection
     setSelectedIds(new Set());
@@ -276,8 +278,9 @@ export default function Dashboard() {
       } else {
         alert('Error al exportar a Notion');
       }
-    } catch (err: any) {
-      alert('Error: ' + err.message);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      alert('Error: ' + message);
     } finally {
       setIsExportingNotion(false);
       setSelectedIds(new Set());
@@ -314,7 +317,12 @@ export default function Dashboard() {
       {/* Manual claim modal */}
       {manualOpen && (
         <>
-          <div className="fixed inset-0 bg-black/30 z-40" onClick={() => setManualOpen(false)} />
+          <button
+            type="button"
+            className="fixed inset-0 bg-black/30 z-40 cursor-default"
+            onClick={() => setManualOpen(false)}
+            aria-label="Close modal"
+          />
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
             <div className="w-full max-w-3xl max-h-[90vh] bg-surface border border-outline-variant rounded-2xl shadow-2xl overflow-y-auto">
               <div className="p-5 border-b border-outline-variant flex items-center justify-between">
@@ -421,8 +429,9 @@ export default function Dashboard() {
                       });
                       setManualOpen(false);
                       refetch();
-                    } catch (e: any) {
-                      setManualError(e.message || 'Error al guardar el siniestro.');
+                    } catch (e: unknown) {
+                      const errorMsg = e instanceof Error ? e.message : 'Error al guardar el siniestro.';
+                      setManualError(errorMsg);
                     } finally {
                       setManualSaving(false);
                     }
@@ -604,8 +613,8 @@ export default function Dashboard() {
                     className="w-full px-3 py-2 rounded-lg bg-surface border border-outline-variant text-body-sm"
                   >
                     {['Todas', ...Array.from(new Set(allClaims.map((c) => String(c.sucursal ?? '').trim()).filter(Boolean)))].map((s) => (
-                      <option key={s as string} value={s as string}>
-                        {s as string}
+                      <option key={s} value={s}>
+                        {s}
                       </option>
                     ))}
                   </select>
@@ -621,8 +630,8 @@ export default function Dashboard() {
                     className="w-full px-3 py-2 rounded-lg bg-surface border border-outline-variant text-body-sm"
                   >
                     {['Todos', ...Array.from(new Set(allClaims.map((c) => String(c.ramo ?? '').trim()).filter(Boolean)))].map((r) => (
-                      <option key={r as string} value={r as string}>
-                        {r as string}
+                      <option key={r} value={r}>
+                        {r}
                       </option>
                     ))}
                   </select>
@@ -685,7 +694,7 @@ export default function Dashboard() {
           <div className="bg-primary text-on-primary px-6 py-3 flex items-center justify-between animate-in fade-in slide-in-from-top-2">
             <div className="flex items-center gap-3 font-label-md">
               <CheckSquare size={18} />
-              <span>{selectedIds.size} siniestro{selectedIds.size !== 1 ? 's' : ''} seleccionado{selectedIds.size !== 1 ? 's' : ''}</span>
+              <span>{selectedIds.size} siniestro{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}</span>
             </div>
             <div className="flex items-center gap-3">
               <button 
@@ -727,17 +736,18 @@ export default function Dashboard() {
               </tr>
             </thead>
             <tbody className="divide-y divide-outline-variant/30">
-              {loading ? (
+              {loading && (
                 <>
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
-                  <SkeletonRow />
+                  <SkeletonRow id="skeleton-1" />
+                  <SkeletonRow id="skeleton-2" />
+                  <SkeletonRow id="skeleton-3" />
+                  <SkeletonRow id="skeleton-4" />
+                  <SkeletonRow id="skeleton-5" />
+                  <SkeletonRow id="skeleton-6" />
+                  <SkeletonRow id="skeleton-7" />
                 </>
-              ) : paginatedClaims.length === 0 ? (
+              )}
+              {!loading && paginatedClaims.length === 0 && (
                 <tr>
                   <td colSpan={7} className="p-16 text-center text-on-surface-variant">
                     <div className="flex flex-col items-center gap-3">
@@ -749,7 +759,8 @@ export default function Dashboard() {
                     </div>
                   </td>
                 </tr>
-              ) : (
+              )}
+              {!loading && paginatedClaims.length > 0 &&
                 paginatedClaims.map((claim) => {
                   const isSelected = selectedIds.has(claim.id_siniestro);
                   return (
@@ -793,7 +804,7 @@ export default function Dashboard() {
                     </tr>
                   );
                 })
-              )}
+              }
             </tbody>
           </table>
         </div>
@@ -832,19 +843,21 @@ export default function Dashboard() {
   );
 }
 
+interface FieldProps {
+  readonly label: string;
+  readonly value: string;
+  readonly onChange: (v: string) => void;
+  readonly placeholder?: string;
+  readonly type?: string;
+}
+
 function Field({
   label,
   value,
   onChange,
   placeholder,
   type = 'text',
-}: {
-  label: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder?: string;
-  type?: string;
-}) {
+}: FieldProps) {
   return (
     <div>
       <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-2">{label}</div>

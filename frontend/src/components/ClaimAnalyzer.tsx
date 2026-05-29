@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useClaim, useClaims } from '../hooks/useClaims';
 import { API_BASE, explainClaim, type Claim, type ClaimDocument } from '../services/api';
+import ReactMarkdown from 'react-markdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -178,22 +179,19 @@ function DocsDrawer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
               return (
                 <div
                   key={doc.id_documento}
-                  className={`rounded-xl border p-4 transition-colors ${
-                    inconsistente
-                      ? 'border-yellow-300 bg-yellow-50'
-                      : !entregado
+                  className={`rounded-xl border p-4 transition-colors ${inconsistente
+                    ? 'border-yellow-300 bg-yellow-50'
+                    : !entregado
                       ? 'border-error/30 bg-error-container/20'
                       : 'border-outline-variant bg-surface-container-lowest hover:bg-surface-container-low'
-                  }`}
+                    }`}
                 >
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-3">
-                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${
-                        inconsistente ? 'bg-yellow-100' : !entregado ? 'bg-error-container' : 'bg-surface-container-high'
-                      }`}>
-                        <span className={`material-symbols-outlined text-[20px] ${
-                          inconsistente ? 'text-yellow-700' : !entregado ? 'text-error' : 'text-on-surface-variant'
+                      <div className={`w-9 h-9 rounded-lg flex items-center justify-center shrink-0 ${inconsistente ? 'bg-yellow-100' : !entregado ? 'bg-error-container' : 'bg-surface-container-high'
                         }`}>
+                        <span className={`material-symbols-outlined text-[20px] ${inconsistente ? 'text-yellow-700' : !entregado ? 'text-error' : 'text-on-surface-variant'
+                          }`}>
                           {inconsistente ? 'warning' : !entregado ? 'block' : 'description'}
                         </span>
                       </div>
@@ -209,14 +207,12 @@ function DocsDrawer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
                     </div>
 
                     <div className="flex flex-col items-end gap-1.5 shrink-0">
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        entregado ? 'bg-green-100 text-green-700' : 'bg-error-container text-error'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${entregado ? 'bg-green-100 text-green-700' : 'bg-error-container text-error'
+                        }`}>
                         {entregado ? '✓ Entregado' : '✗ Faltante'}
                       </span>
-                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${
-                        legible ? 'bg-surface-container-high text-on-surface-variant' : 'bg-error-container text-error'
-                      }`}>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold uppercase ${legible ? 'bg-surface-container-high text-on-surface-variant' : 'bg-error-container text-error'
+                        }`}>
                         {legible ? 'Legible' : 'Ilegible'}
                       </span>
                     </div>
@@ -360,16 +356,7 @@ export default function ClaimAnalyzer() {
           </nav>
           <h2 className="font-headline-lg text-headline-lg text-on-surface">Analizador de Siniestros</h2>
         </div>
-        <div className="flex gap-3">
-          <button
-            className="px-4 py-2 bg-primary text-on-primary rounded-lg font-label-md flex items-center gap-2 hover:opacity-90 transition-opacity"
-            onClick={handleExplain}
-            disabled={loading || !claim}
-          >
-            <span className="material-symbols-outlined text-[18px]">auto_awesome</span>
-            Explicación IA
-          </button>
-        </div>
+        
       </div>
 
       {/* Error state */}
@@ -413,6 +400,19 @@ export default function ClaimAnalyzer() {
               <ScoreRing score={Math.round(score)} color={claim?.final_color ?? 'verde'} />
             )}
           </div>
+
+          {/* Anomaly Alert */}
+          {!loading && claim?.is_anomaly && (
+            <div className="bg-error-container border border-error/50 rounded-xl p-4 flex items-center gap-4">
+              <div className="bg-error text-on-error w-10 h-10 rounded-full flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined">psychology_alt</span>
+              </div>
+              <div>
+                <h3 className="font-bold text-error">Detección de Anomalías: Comportamiento Atípico</h3>
+                <p className="text-on-error-container text-sm">El modelo no supervisado (Isolation Forest) detectó que los patrones numéricos de este siniestro son atípicos frente al histórico.</p>
+              </div>
+            </div>
+          )}
 
           {/* Analysis Breakdown Cards */}
           <div className="grid grid-cols-2 gap-6">
@@ -643,10 +643,28 @@ export default function ClaimAnalyzer() {
                 <p className="text-label-sm">{explainError}</p>
               </div>
             ) : explanation ? (
-              <div className="bg-surface-container-low p-5 rounded-xl border border-outline-variant">
-                <p className="font-label-sm text-on-surface-variant uppercase tracking-wider mb-3">Análisis del Agente Gemini</p>
-                <div className="font-body-md text-on-surface whitespace-pre-wrap leading-relaxed">
-                  {explanation}
+              <div className="bg-surface-container-low rounded-xl border border-outline-variant shadow-sm overflow-hidden flex flex-col">
+                {/* Cabecera */}
+                <div className="flex items-center justify-between px-5 py-3 border-b border-outline-variant bg-surface-container-lowest">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-primary text-xl">auto_awesome</span>
+                    <p className="font-label-sm text-on-surface-variant font-semibold uppercase tracking-wider mb-0">
+                      Análisis de IA
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => navigator.clipboard.writeText(explanation)}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-lg text-xs font-medium text-primary hover:bg-primary/10 transition-colors"
+                  >
+                    <span className="material-symbols-outlined text-sm">content_copy</span>
+                    Copiar
+                  </button>
+                </div>
+
+                {/* Contenido parseado de Markdown */}
+                <div className="p-5 font-body-md text-on-surface leading-relaxed aianalisis-content">
+                  <ReactMarkdown>{explanation}</ReactMarkdown>
                 </div>
               </div>
             ) : (
@@ -658,15 +676,6 @@ export default function ClaimAnalyzer() {
           </div>
         </div>
       </div>
-
-      {/* Floating trigger */}
-      <button
-        className="fixed bottom-8 right-8 w-14 h-14 bg-primary text-on-primary rounded-full shadow-lg flex items-center justify-center hover:scale-105 active:scale-95 transition-all z-30"
-        onClick={handleExplain}
-        title="Obtener Explicación IA"
-      >
-        <span className="material-symbols-outlined" style={{ fontVariationSettings: "'FILL' 1" }}>auto_awesome</span>
-      </button>
     </>
   );
 }

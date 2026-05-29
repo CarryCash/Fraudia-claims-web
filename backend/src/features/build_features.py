@@ -10,8 +10,8 @@ import os
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
+from sentence_transformers import SentenceTransformer
 from src.ingestion.load_data import (
     load_siniestros,
     load_polizas,
@@ -130,10 +130,10 @@ def build_features(save: bool = True) -> pd.DataFrame:
     )
     
     # 7. Text Similarity between all narratives (RF07 cloned narratives)
-    # Using TF-IDF Vectorizer (scikit-learn is already installed, avoids sentence-transformers weight)
-    vectorizer = TfidfVectorizer(stop_words=None)
-    tfidf_matrix = vectorizer.fit_transform(df_sin["descripcion"].astype(str))
-    sim_matrix = cosine_similarity(tfidf_matrix)
+    # Using Sentence Transformers for semantic similarity
+    model = SentenceTransformer('paraphrase-multilingual-MiniLM-L12-v2')
+    embeddings = model.encode(df_sin["descripcion"].astype(str).tolist())
+    sim_matrix = cosine_similarity(embeddings)
     
     max_sims = []
     for i in range(len(df_sin)):
@@ -146,6 +146,10 @@ def build_features(save: bool = True) -> pd.DataFrame:
     
     # 8. Monto cercano a suma asegurada (>= 95%)
     df_sin["monto_cercano_suma_asegurada"] = (df_sin["monto_reclamado"] >= 0.95 * df_sin["suma_asegurada"]).astype(int)
+    
+    # 9. NetworkX Graph Features (Detección de Redes de Fraude)
+    from src.features.graph_features import compute_graph_features
+    df_sin = compute_graph_features(df_sin)
     
     # Save processed dataframe
     if save:

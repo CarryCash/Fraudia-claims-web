@@ -1,4 +1,4 @@
-import { NavLink, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { searchGlobal, type SearchResponse } from '../services/api';
 
@@ -134,17 +134,7 @@ export default function TopBar({ isSidebarOpen }: TopBarProps) {
             </div>
           )}
         </div>
-        <nav className="hidden md:flex gap-6">
-          <NavLink to="/" className={({ isActive }) => `font-label-md py-5 transition-opacity ${isActive ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'}`}>
-            Dashboard & Claims
-          </NavLink>
-          <NavLink to="/entities" className={({ isActive }) => `font-label-md py-5 transition-opacity ${isActive ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'}`}>
-            Entities
-          </NavLink>
-          <NavLink to="/reports" className={({ isActive }) => `font-label-md py-5 transition-opacity ${isActive ? 'text-primary border-b-2 border-primary' : 'text-on-surface-variant hover:text-primary'}`}>
-            Reports
-          </NavLink>
-        </nav>
+        
       </div>
       <div className="flex items-center gap-4">
         <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
