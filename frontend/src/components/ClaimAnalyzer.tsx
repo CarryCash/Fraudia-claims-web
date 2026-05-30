@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useClaim, useClaims } from '../hooks/useClaims';
-import { API_BASE, explainClaim, type Claim, type ClaimDocument } from '../services/api';
+import { API_BASE, explainClaim, deleteClaim, type Claim, type ClaimDocument } from '../services/api';
 import ReactMarkdown from 'react-markdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -62,7 +62,7 @@ function ScoreRing({ score, color }: { score: number; color: Claim['final_color'
 // ── Claim Selector (when no ID in URL) ────────────────────────────────────────
 function ClaimSelector({ onSelect }: { onSelect: (id: number) => void }) {
   const [searchInput, setSearchInput] = useState('');
-  const { claims, loading } = useClaims({ page: 1, limit: 20 });
+  const { claims, loading, removeClaim } = useClaims({ page: 1, limit: 20 });
 
   const filtered = claims.filter(
     (c) =>
@@ -290,6 +290,133 @@ function DocsDrawer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
   );
 }
 
+// ── Delete Confirmation Modal ────────────────────────────────────────────────
+const DELETE_REASONS = [
+  'Error de ingreso de datos',
+  'Fraude confirmado — causa mayor',
+  'Siniestro duplicado',
+  'Siniestro cancelado por el asegurado',
+  'Otro motivo',
+];
+
+function DeleteModal({
+  claim,
+  onConfirm,
+  onCancel,
+  isDeleting,
+}: {
+  claim: Claim;
+  onConfirm: (motivo: string) => void;
+  onCancel: () => void;
+  isDeleting: boolean;
+}) {
+  const [motivo, setMotivo] = useState('');
+  const [confirmText, setConfirmText] = useState('');
+  const idStr = String(claim.id_siniestro);
+  const canDelete = motivo !== '' && confirmText === idStr;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+      {/* Backdrop */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-sm" onClick={onCancel} />
+
+      {/* Modal */}
+      <div className="relative w-full max-w-md bg-surface-container-lowest rounded-2xl shadow-2xl border border-outline-variant overflow-hidden">
+        {/* Header */}
+        <div className="flex items-center gap-3 px-6 py-5 border-b border-outline-variant bg-error-container/30">
+          <div className="w-10 h-10 rounded-full bg-error flex items-center justify-center shrink-0">
+            <span className="material-symbols-outlined text-on-error text-[22px]">delete_forever</span>
+          </div>
+          <div>
+            <h3 className="font-bold text-on-surface text-headline-sm">Eliminar Siniestro</h3>
+            <p className="text-label-sm text-on-surface-variant font-mono">#{idStr}</p>
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-5">
+          {/* Warning */}
+          <div className="flex gap-3 p-4 bg-error-container/40 border border-error/30 rounded-xl">
+            <span className="material-symbols-outlined text-error text-[20px] shrink-0 mt-0.5">warning</span>
+            <p className="text-label-md text-on-surface leading-relaxed">
+              Esta acción es <strong>permanente e irreversible</strong>. Se eliminarán el siniestro y todos sus documentos asociados.
+            </p>
+          </div>
+
+          {/* Reason selector */}
+          <div className="space-y-2">
+            <label className="text-label-sm font-bold text-on-surface-variant uppercase tracking-wider">
+              Motivo de eliminación <span className="text-error">*</span>
+            </label>
+            <select
+              id="delete-motivo"
+              className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2.5 text-body-md text-on-surface focus:outline-none focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all"
+              value={motivo}
+              onChange={(e) => setMotivo(e.target.value)}
+            >
+              <option value="">Selecciona un motivo…</option>
+              {DELETE_REASONS.map((r) => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+          </div>
+
+          {/* Confirm by typing ID */}
+          <div className="space-y-2">
+            <label className="text-label-sm font-bold text-on-surface-variant uppercase tracking-wider">
+              Escribe el ID <span className="font-mono text-primary">{idStr}</span> para confirmar <span className="text-error">*</span>
+            </label>
+            <input
+              id="delete-confirm-text"
+              type="text"
+              className="w-full bg-surface-container-low border border-outline-variant rounded-lg px-3 py-2.5 font-mono text-body-md text-on-surface placeholder:text-on-surface-variant/50 focus:outline-none focus:border-error focus:ring-2 focus:ring-error/20 transition-all"
+              placeholder={idStr}
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              autoComplete="off"
+            />
+            {confirmText && confirmText !== idStr && (
+              <p className="text-label-sm text-error">El ID no coincide.</p>
+            )}
+          </div>
+
+          {/* Actions */}
+          <div className="flex gap-3 pt-1">
+            <button
+              id="delete-cancel-btn"
+              className="flex-1 py-2.5 border border-outline-variant rounded-lg font-label-md font-bold text-on-surface hover:bg-surface-container-low transition-colors"
+              onClick={onCancel}
+              disabled={isDeleting}
+            >
+              Cancelar
+            </button>
+            <button
+              id="delete-confirm-btn"
+              className={`flex-1 py-2.5 rounded-lg font-label-md font-bold text-on-error transition-all flex items-center justify-center gap-2 ${
+                canDelete && !isDeleting
+                  ? 'bg-error hover:opacity-90 active:scale-95'
+                  : 'bg-error/40 cursor-not-allowed'
+              }`}
+              onClick={() => canDelete && onConfirm(motivo)}
+              disabled={!canDelete || isDeleting}
+            >
+              {isDeleting ? (
+                <>
+                  <span className="w-4 h-4 border-2 border-on-error/40 border-t-on-error rounded-full animate-spin" />
+                  Eliminando…
+                </>
+              ) : (
+                <>
+                  Eliminar permanentemente
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Main Component ────────────────────────────────────────────────────────────
 export default function ClaimAnalyzer() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -298,6 +425,9 @@ export default function ClaimAnalyzer() {
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDocsOpen, setIsDocsOpen] = useState(false);
+  const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
   const [loadingExplain, setLoadingExplain] = useState(false);
   const [explainError, setExplainError] = useState<string | null>(null);
@@ -319,6 +449,30 @@ export default function ClaimAnalyzer() {
 
   const handleSelectClaim = (id: number) => {
     setSearchParams({ id: String(id) });
+  };
+
+  const { removeClaim } = useClaims({ page: 1, limit: 20 });
+
+  const handleDelete = async (motivo: string) => {
+    if (!idParam) return;
+    setIsDeleting(true);
+    try {
+      await deleteClaim(idParam, motivo);
+      // Optimistically remove from local list immediately
+      removeClaim(idParam);
+      // Notify all other useClaims instances (Dashboard, etc.) to refetch
+      window.dispatchEvent(new CustomEvent('claim-deleted', { detail: { id: idParam } }));
+      setIsDeleteOpen(false);
+      setDeleteSuccess(idParam);
+      // Navigate back to the claim list after a short delay
+      setTimeout(() => {
+        setSearchParams({});
+      }, 1500);
+    } catch (e: any) {
+      alert(`Error al eliminar: ${e.message ?? 'Error desconocido'}`);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   const handleExplain = async () => {
@@ -596,12 +750,38 @@ export default function ClaimAnalyzer() {
                       </span>
                     )}
                   </button>
+                  <button
+                    id="delete-claim-btn"
+                    className="w-full py-2.5 bg-surface border border-error/40 text-error rounded-lg font-label-md font-bold hover:bg-error-container/40 transition-colors flex items-center justify-center gap-2"
+                    onClick={() => setIsDeleteOpen(true)}
+                  >
+                    <span className="material-symbols-outlined text-[18px]">delete_forever</span>
+                    Eliminar Siniestro
+                  </button>
                 </div>
               </div>
             ) : null}
           </div>
         </div>
       </div>
+
+      {/* Delete Success Toast */}
+      {deleteSuccess && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-3 bg-surface-container-lowest border border-outline-variant rounded-xl shadow-2xl px-5 py-3 animate-bounce-once">
+          <span className="material-symbols-outlined text-green-600" style={{ fontVariationSettings: "'FILL' 1" }}>check_circle</span>
+          <p className="text-body-md font-bold text-on-surface">Siniestro <span className="font-mono text-primary">#{deleteSuccess}</span> eliminado correctamente.</p>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isDeleteOpen && claim && (
+        <DeleteModal
+          claim={claim}
+          onConfirm={handleDelete}
+          onCancel={() => setIsDeleteOpen(false)}
+          isDeleting={isDeleting}
+        />
+      )}
 
       {/* Documentation Drawer */}
       {isDocsOpen && claim && (

@@ -26,6 +26,7 @@ interface UseClaimsResult {
   error: string | null;
   refetch: () => void;
   addClaim: (claim: Claim) => void;
+  removeClaim: (id: number | string) => void;
 }
 
 export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
@@ -62,6 +63,13 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
 
   const refetch = useCallback(() => setTick((t) => t + 1), []);
 
+  // Listen for cross-component deletion events and auto-refetch
+  useEffect(() => {
+    const handler = () => setTick((t) => t + 1);
+    window.addEventListener('claim-deleted', handler);
+    return () => window.removeEventListener('claim-deleted', handler);
+  }, []);
+
   const addClaim = useCallback((claim: Claim) => {
     setData((prev) => {
       const claimId = String(claim.id_siniestro);
@@ -83,6 +91,15 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
     });
   }, [limit, page]);
 
+  const removeClaim = useCallback((id: number | string) => {
+    const idStr = String(id);
+    setData((prev) => {
+      if (!prev) return prev;
+      const filtered = prev.data.filter((c) => String(c.id_siniestro) !== idStr);
+      return { ...prev, total: Math.max(0, prev.total - 1), data: filtered };
+    });
+  }, []);
+
   return {
     claims: data?.data ?? [],
     total: data?.total ?? 0,
@@ -90,6 +107,7 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
     error,
     refetch,
     addClaim,
+    removeClaim,
   };
 }
 

@@ -128,7 +128,7 @@ def generate_explanation(claim: Dict[str, Any], rule_score: int, ml_prob: float,
     payload = {
         "model": "google/gemma-3n-e4b-it",
         "messages": [{"role": "user", "content": prompt}],
-        "max_tokens": 512,
+        "max_tokens": 1536,
         "temperature": 0.2,
         "top_p": 0.7,
         "frequency_penalty": 0.0,

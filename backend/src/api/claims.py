@@ -16,6 +16,7 @@ import uuid
 from datetime import date
 from pathlib import Path
 from typing import Any
+# pyrefly: ignore [missing-import]
 from werkzeug.utils import secure_filename
 # pyrefly: ignore [missing-import]
 import sqlite3
@@ -754,7 +755,49 @@ def explain_claim(claim_id):
     })
 
 
-# ── Private helpers ──────────────────────────────────────────────────────
+# ── DELETE /api/claims/<id> ───────────────────────────────────────────────────
+@claims_bp.route("/<claim_id>", methods=["DELETE"])
+def delete_claim(claim_id):
+    """Permanently delete a claim and all its associated documents.
+
+    Body (optional JSON):
+        motivo (str) – reason for deletion (for logging purposes)
+    """
+    body = request.get_json(silent=True) or {}
+    motivo = str(body.get("motivo", "")).strip() or "No especificado"
+
+    ensure_relational_db(DEFAULT_DB_PATH)
+    conn = open_db(DEFAULT_DB_PATH)
+    try:
+        cur = conn.execute(
+            "SELECT 1 FROM siniestros WHERE id_siniestro = ?", (str(claim_id),)
+        )
+        if cur.fetchone() is None:
+            return jsonify({"error": f"Siniestro {claim_id} no encontrado."}), 404
+
+        # Delete associated documents first (FK-style cleanup)
+        conn.execute(
+            "DELETE FROM documentos WHERE id_siniestro = ?", (str(claim_id),)
+        )
+        # Delete the claim itself
+        conn.execute(
+            "DELETE FROM siniestros WHERE id_siniestro = ?", (str(claim_id),)
+        )
+        conn.commit()
+    except Exception as exc:
+        conn.rollback()
+        return jsonify({"error": f"Error al eliminar siniestro: {exc}"}), 500
+    finally:
+        conn.close()
+
+    return jsonify({
+        "success": True,
+        "id_siniestro": claim_id,
+        "motivo": motivo,
+    })
+
+
+# ── Private helpers ──────────────────────────────────────────────────────────
 
 
 def _sanitize(obj: Any) -> Any:

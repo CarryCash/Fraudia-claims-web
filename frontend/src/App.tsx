@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Routes, Route } from 'react-router-dom';
+import { Routes, Route, useLocation } from 'react-router-dom';
 import Sidebar from './components/Sidebar';
 import TopBar from './components/TopBar';
 import Dashboard from './components/Dashboard';
@@ -8,30 +8,38 @@ import AgentView from './components/AgentView';
 import NetworkView from './components/NetworkView';
 
 import EntitiesView from './components/EntitiesView';
+import LoginView from './components/LoginView';
+import ProtectedRoute from './components/ProtectedRoute';
 
 
 function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const location = useLocation();
+  const isLoginPage = location.pathname === '/login';
 
   return (
     <>
-      <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
-      <TopBar isSidebarOpen={isSidebarOpen} />
+      {!isLoginPage && <Sidebar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />}
+      {!isLoginPage && <TopBar isSidebarOpen={isSidebarOpen} />}
+      
       <main 
-        className={`mt-16 p-8 bg-surface-container-lowest min-h-[calc(100vh-64px)] transition-all duration-300 ${isSidebarOpen ? 'ml-[240px]' : 'ml-[80px]'}`}
+        className={isLoginPage ? '' : `mt-16 p-8 bg-surface-container-lowest min-h-[calc(100vh-64px)] transition-all duration-300 ${isSidebarOpen ? 'ml-[240px]' : 'ml-[80px]'}`}
       >
         <Routes>
+          <Route path="/login" element={<LoginView />} />
+          
           <Route path="/" element={
-            <div className="flex gap-6 flex-col xl:flex-row">
-              <Dashboard />
-              {/* <AlertsPanel />  // Si quieres que el panel de alertas siga, o se quite */}
-            </div>
+            <ProtectedRoute>
+              <div className="flex gap-6 flex-col xl:flex-row">
+                <Dashboard />
+              </div>
+            </ProtectedRoute>
           } />
-          <Route path="/analyzer" element={<ClaimAnalyzer />} />
-          <Route path="/agent" element={<AgentView />} />
-          <Route path="/network" element={<NetworkView />} />
-          <Route path="/entities" element={<EntitiesView />} />
-          <Route path="*" element={<div className="p-8">En construcción...</div>} />
+          <Route path="/analyzer" element={<ProtectedRoute><ClaimAnalyzer /></ProtectedRoute>} />
+          <Route path="/agent" element={<ProtectedRoute><AgentView /></ProtectedRoute>} />
+          <Route path="/network" element={<ProtectedRoute><NetworkView /></ProtectedRoute>} />
+          <Route path="/entities" element={<ProtectedRoute><EntitiesView /></ProtectedRoute>} />
+          <Route path="*" element={<ProtectedRoute><div className="p-8">En construcción...</div></ProtectedRoute>} />
         </Routes>
       </main>
     </>

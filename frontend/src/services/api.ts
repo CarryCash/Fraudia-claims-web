@@ -314,6 +314,19 @@ export async function chatWithAgent(question: string): Promise<ChatResponse> {
   });
 }
 
+/**
+ * Permanently delete a claim and its associated documents.
+ */
+export async function deleteClaim(
+  id: number | string,
+  motivo: string,
+): Promise<{ success: boolean; id_siniestro: string; motivo: string }> {
+  return apiFetch(`/api/claims/${id}`, {
+    method: 'DELETE',
+    body: JSON.stringify({ motivo }),
+  });
+}
+
 // ── Network ──────────────────────────────────────────────────────────────────
 
 export interface NetworkNode {

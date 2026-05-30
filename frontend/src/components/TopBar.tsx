@@ -1,3 +1,4 @@
+import { useAuth } from '../context/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { searchGlobal, type SearchResponse } from '../services/api';
@@ -8,16 +9,24 @@ interface TopBarProps {
 
 export default function TopBar({ isSidebarOpen }: TopBarProps) {
   const navigate = useNavigate();
+  const { user, logout } = useAuth();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResponse | null>(null);
   const [open, setOpen] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [showProfileMenu, setShowProfileMenu] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
+  const profileMenuRef = useRef<HTMLDivElement>(null);
+  const [imgError, setImgError] = useState(false);
 
   useEffect(() => {
     const onDoc = (e: MouseEvent) => {
       if (!containerRef.current) return;
       if (!containerRef.current.contains(e.target as Node)) setOpen(false);
+      
+      if (profileMenuRef.current && !profileMenuRef.current.contains(e.target as Node)) {
+        setShowProfileMenu(false);
+      }
     };
     document.addEventListener('mousedown', onDoc);
     return () => document.removeEventListener('mousedown', onDoc);
@@ -44,6 +53,11 @@ export default function TopBar({ isSidebarOpen }: TopBarProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleLogout = () => {
+    logout();
+    navigate('/login');
   };
 
   return (
@@ -137,14 +151,41 @@ export default function TopBar({ isSidebarOpen }: TopBarProps) {
         
       </div>
       <div className="flex items-center gap-4">
-        <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-          <span className="material-symbols-outlined" data-icon="notifications">notifications</span>
-        </button>
-        <button className="p-2 text-on-surface-variant hover:text-primary transition-colors">
-          <span className="material-symbols-outlined" data-icon="more_vert">more_vert</span>
-        </button>
-        <div className="h-8 w-8 rounded-full overflow-hidden bg-surface-container-highest border border-outline-variant">
-          <img alt="Investigator Avatar" className="w-full h-full object-cover" src="https://lh3.googleusercontent.com/aida-public/AB6AXuAgJbOMgvqFxEXUWaxqfd3vMgVqVI__VidWmC8rq2pK2xo6LWe73KTarQxicezk0EHi-uGLX7CKubnqMw-SKz3Odu9y4smWhoKXrvt7MY8hwFsZykwNu63gHmFjF5pDL09GWQsBDlkRWfm8q3m7LsOUL5yVUruaPQQYYh0Fz7_GVYmRMNuvCKMHHWNp3qARplp_cywdC1mUbYPFlWorR-dJPyCOGSU3cLX1dawAFfZjq4PI2qLAHLJNokq2L7XUmTp-8OW28QQXcNg" />
+        
+        <div className="relative" ref={profileMenuRef}>
+          <button 
+            className="flex items-center gap-2 hover:bg-surface-container-low p-1 pr-3 rounded-full transition-colors border border-transparent hover:border-outline-variant"
+            onClick={() => setShowProfileMenu(!showProfileMenu)}
+          >
+            <div className="h-8 w-8 rounded-full overflow-hidden bg-surface-container-highest border border-outline-variant shrink-0 flex items-center justify-center font-bold text-primary">
+              {user?.picture && !imgError ? (
+                <img alt={user?.name} className="w-full h-full object-cover" src={user.picture} onError={() => setImgError(true)} />
+              ) : (
+                user?.name ? user.name.charAt(0).toUpperCase() : 'A'
+              )}
+            </div>
+            <div className="text-left hidden md:block">
+              <p className="text-label-sm font-bold text-on-surface leading-none">{user?.name || 'Usuario'}</p>
+              <p className="text-[10px] text-on-surface-variant leading-tight truncate w-24">{user?.email || 'Investigador'}</p>
+            </div>
+            <span className="material-symbols-outlined text-[16px] text-on-surface-variant">arrow_drop_down</span>
+          </button>
+
+          {showProfileMenu && (
+            <div className="absolute right-0 top-full mt-2 w-48 bg-surface border border-outline-variant rounded-xl shadow-lg overflow-hidden py-1 z-50">
+              <div className="px-4 py-3 border-b border-outline-variant md:hidden">
+                <p className="text-label-sm font-bold text-on-surface truncate">{user?.name}</p>
+                <p className="text-[11px] text-on-surface-variant truncate">{user?.email}</p>
+              </div>
+              <button 
+                onClick={handleLogout}
+                className="w-full text-left px-4 py-2 text-label-md text-error hover:bg-error-container/20 transition-colors flex items-center gap-2"
+              >
+                <span className="material-symbols-outlined text-[18px]">logout</span>
+                Cerrar Sesión
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </header>

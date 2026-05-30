@@ -51,6 +51,9 @@ def create_app() -> Flask:
     app.register_blueprint(notion_bp)
     app.register_blueprint(search_bp)
 
+    from src.api.auth import auth_bp
+    app.register_blueprint(auth_bp)
+
     # Catch-all route to serve React app for non-API routes
     @app.route("/", defaults={"path": ""})
     @app.route("/<path:path>")
