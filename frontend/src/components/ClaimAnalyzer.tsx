@@ -231,8 +231,8 @@ function DocsDrawer({ claim, onClose }: { claim: Claim; onClose: () => void }) {
                         className="inline-flex items-center gap-2 rounded-lg border border-outline-variant bg-surface-container-high px-3 py-2 text-label-sm font-bold text-primary hover:bg-primary/5 transition-colors"
                         onClick={() => window.open(`${API_BASE}/api/claims/${claim.id_siniestro}/documentos/${doc.id_documento}/preview`, '_blank')}
                       >
-                        <span className="material-symbols-outlined">picture_as_pdf</span>
-                        Ver PDF
+                        <span className="material-symbols-outlined">visibility</span>
+                        Ver archivo
                       </button>
                       <span className="text-[11px] text-on-surface-variant">{doc.archivo_pdf}</span>
                     </div>

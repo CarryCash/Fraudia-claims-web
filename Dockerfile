@@ -16,5 +16,7 @@ COPY backend/ ./backend/
 COPY data/ ./data/
 COPY docs/ ./docs/
 
+RUN mkdir -p data/uploads
+
 # Forzamos a Gunicorn a escuchar en el puerto que Render asigne dinámicamente
 CMD ["gunicorn", "--bind", "0.0.0.0:10000", "backend.app:create_app()"]

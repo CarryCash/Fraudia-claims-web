@@ -28,9 +28,11 @@ from src.api.entities import entities_bp
 from src.api.reports import reports_bp
 from src.api.notion import notion_bp
 from src.api.search import search_bp
+from src.paths import UPLOADS_ROOT
 
 def create_app() -> Flask:
     """Application factory."""
+    UPLOADS_ROOT.mkdir(parents=True, exist_ok=True)
     # Configure Flask to serve the React build folder
     static_folder = str((BACKEND_ROOT.parent / "frontend" / "dist").resolve())
     app = Flask(__name__, static_folder=static_folder, static_url_path="/")

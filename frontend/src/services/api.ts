@@ -189,11 +189,52 @@ export async function fetchClaim(id: number | string): Promise<Claim> {
   return apiFetch<Claim>(`/api/claims/${id}`);
 }
 
-export async function createManualClaim(payload: Record<string, any>): Promise<{ success: boolean; id_siniestro: string }> {
-  return apiFetch<{ success: boolean; id_siniestro: string }>(`/api/claims/manual`, {
+export async function createManualClaim(payload: Record<string, any>): Promise<{ success: boolean; id_siniestro: string; claim?: Claim }> {
+  return apiFetch<{ success: boolean; id_siniestro: string; claim?: Claim }>(`/api/claims/manual`, {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export interface CreateManualClaimCompleteResponse {
+  success: boolean;
+  id_siniestro: string;
+  claim?: Claim;
+  warning?: string;
+}
+
+export async function createManualClaimComplete(
+  payload: Record<string, unknown>,
+  docs: {
+    tipo_documento: string;
+    file: File;
+    inconsistencia_detectada?: string;
+    observacion?: string;
+  }[],
+): Promise<CreateManualClaimCompleteResponse> {
+  const form = new FormData();
+  form.append('payload', JSON.stringify(payload));
+  form.append(
+    'docs_meta',
+    JSON.stringify(
+      docs.map((d) => ({
+        tipo_documento: d.tipo_documento,
+        observacion: d.observacion ?? '',
+        inconsistencia_detectada: d.inconsistencia_detectada ?? 'No',
+      })),
+    ),
+  );
+  for (const doc of docs) {
+    form.append('files', doc.file);
+  }
+
+  const url = `${API_BASE}/api/claims/manual/complete`;
+  const res = await fetch(url, { method: 'POST', body: form });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorBody.error ?? `HTTP ${res.status}`);
+  }
+  return res.json() as Promise<CreateManualClaimCompleteResponse>;
 }
 
 export async function createManualClaimDocuments(
@@ -204,12 +245,39 @@ export async function createManualClaimDocuments(
     legible: string;
     inconsistencia_detectada: string;
     observacion?: string;
+    archivo_pdf?: string;
   }[],
 ): Promise<{ success: boolean }> {
   return apiFetch<{ success: boolean }>(`/api/claims/${id_siniestro}/documentos/manual`, {
     method: 'POST',
     body: JSON.stringify({ documentos: docs }),
   });
+}
+
+export async function uploadClaimDocument(
+  id_siniestro: string,
+  file: File,
+  meta: {
+    tipo_documento: string;
+    observacion?: string;
+    inconsistencia_detectada?: string;
+  },
+): Promise<{ success: boolean; id_documento: string; archivo_pdf: string }> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('tipo_documento', meta.tipo_documento);
+  if (meta.observacion) form.append('observacion', meta.observacion);
+  if (meta.inconsistencia_detectada) {
+    form.append('inconsistencia_detectada', meta.inconsistencia_detectada);
+  }
+
+  const url = `${API_BASE}/api/claims/${id_siniestro}/documentos/upload`;
+  const res = await fetch(url, { method: 'POST', body: form });
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorBody.error ?? `HTTP ${res.status}`);
+  }
+  return res.json();
 }
 
 /**

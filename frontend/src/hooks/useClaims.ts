@@ -25,6 +25,7 @@ interface UseClaimsResult {
   loading: boolean;
   error: string | null;
   refetch: () => void;
+  addClaim: (claim: Claim) => void;
 }
 
 export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
@@ -61,12 +62,34 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
 
   const refetch = useCallback(() => setTick((t) => t + 1), []);
 
+  const addClaim = useCallback((claim: Claim) => {
+    setData((prev) => {
+      const claimId = String(claim.id_siniestro);
+      if (prev) {
+        const exists = prev.data.some((c) => String(c.id_siniestro) === claimId);
+        if (exists) return prev;
+        return {
+          ...prev,
+          total: prev.total + 1,
+          data: [claim, ...prev.data],
+        };
+      }
+      return {
+        total: 1,
+        page,
+        limit,
+        data: [claim],
+      };
+    });
+  }, [limit, page]);
+
   return {
     claims: data?.data ?? [],
     total: data?.total ?? 0,
     loading,
     error,
     refetch,
+    addClaim,
   };
 }
 

@@ -1,8 +1,8 @@
-import { useState, useMemo, useEffect } from 'react';
+import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
-import { createManualClaim, createManualClaimDocuments, type Claim } from '../services/api';
+import { createManualClaimComplete, type Claim } from '../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -65,7 +65,7 @@ export default function Dashboard() {
   const q = (params.get('q') || '').trim();
 
   // Load full dataset (1000 siniestros) for consistent analysis across the app
-  const { claims: allClaims, total, loading, error, refetch } = useClaims({ page: 1, limit: 1000 });
+  const { claims: allClaims, total, loading, error, refetch, addClaim } = useClaims({ page: 1, limit: 1000 });
 
   const [activeTab, setActiveTab] = useState<'all' | 'review' | 'docs'>('all');
   const [priorityMode, setPriorityMode] = useState(false);
@@ -101,33 +101,83 @@ export default function Dashboard() {
     placa_vehiculo: '',
   });
 
-  // Documents for new claim modal
-  const [manualDocs, setManualDocs] = useState<{
+  type ManualDocEntry = {
     tipo_documento: string;
-    entregado: string;
-    legible: string;
+    file: File;
     inconsistencia_detectada: string;
     observacion: string;
-  }[]>([]);
+  };
 
-  const addManualDoc = () => {
+  const [manualDocs, setManualDocs] = useState<ManualDocEntry[]>([]);
+  const docFileInputRef = useRef<HTMLInputElement>(null);
+  const [pendingDocPick, setPendingDocPick] = useState<{ tipo_documento: string } | null>(null);
+
+  const DOC_TYPE_OPTIONS = [
+    'Póliza',
+    'Factura de Taller/Clínica',
+    'Informe Policial',
+    'Denuncia Fiscalía',
+    'Cédula / Identificación',
+    'Fotos del siniestro',
+    'Otro',
+  ];
+
+  const resetManualForm = () => {
+    setManual({
+      id_siniestro: '',
+      id_poliza: '',
+      id_asegurado: '',
+      ramo: '',
+      cobertura: '',
+      fecha_ocurrencia: '',
+      fecha_reporte: '',
+      monto_reclamado: '',
+      sucursal: '',
+      descripcion: '',
+      beneficiario: '',
+      documentos_completos: 'Sí',
+      id_proveedor: '',
+      placa_vehiculo: '',
+    });
+    setManualDocs([]);
+    setPendingDocPick(null);
+  };
+
+  const requestDocFile = (tipo_documento: string) => {
+    setPendingDocPick({ tipo_documento });
+    docFileInputRef.current?.click();
+  };
+
+  const handleDocFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file || !pendingDocPick) return;
+
     setManualDocs((prev) => [
       ...prev,
-      { tipo_documento: '', entregado: 'Sí', legible: 'Sí', inconsistencia_detectada: 'No', observacion: '' },
+      {
+        tipo_documento: pendingDocPick.tipo_documento,
+        file,
+        inconsistencia_detectada: 'No',
+        observacion: '',
+      },
     ]);
+    setPendingDocPick(null);
   };
 
   const removeManualDoc = (idx: number) => {
     setManualDocs((prev) => prev.filter((_, i) => i !== idx));
   };
 
-  const updateManualDoc = (idx: number, field: string, value: string) => {
+  const updateManualDoc = (idx: number, field: keyof ManualDocEntry, value: string) => {
     setManualDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
   };
 
-  // Red claims (for KPI card)
-  const { total: totalRojo } = useClaims({ page: 1, limit: 1, color: 'rojo' });
-  const { claims: redClaims } = useClaims({ page: 1, limit: 1000, color: 'rojo' });
+  const redClaims = useMemo(
+    () => allClaims.filter((c) => c.final_color === 'rojo'),
+    [allClaims],
+  );
+  const totalRojo = redClaims.length;
   const potentialSavings = redClaims.reduce((acc, c) => acc + (c.monto_reclamado ?? 0), 0);
   const missingDocsCount = allClaims.filter((c) => c.documentos_completos === 'No' || c.documentos_completos === 'Incompleto').length;
 
@@ -343,7 +393,7 @@ export default function Dashboard() {
           <button
             type="button"
             className="fixed inset-0 bg-black/30 z-40 cursor-default"
-            onClick={() => { setManualOpen(false); setManualDocs([]); }}
+            onClick={() => { setManualOpen(false); resetManualForm(); }}
             aria-label="Close modal"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
@@ -355,7 +405,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   className="px-3 py-2 rounded-lg hover:bg-surface-container-low text-on-surface-variant font-bold"
-                  onClick={() => { setManualOpen(false); setManualDocs([]); }}
+                  onClick={() => { setManualOpen(false); resetManualForm(); }}
                 >
                   Cerrar
                 </button>
@@ -400,24 +450,37 @@ export default function Dashboard() {
 
                 {/* Document entries */}
                 <div className="md:col-span-2">
+                  <input
+                    ref={docFileInputRef}
+                    type="file"
+                    className="hidden"
+                    accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
+                    onChange={handleDocFileSelected}
+                  />
                   <div className="flex items-center justify-between mb-3">
                     <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Documentos del siniestro</div>
-                    <button
-                      type="button"
-                      className="flex items-center gap-1 text-label-sm font-bold text-primary hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors"
-                      onClick={addManualDoc}
-                    >
-                      <span className="text-[18px] font-bold leading-none">+</span> Agregar documento
-                    </button>
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    {DOC_TYPE_OPTIONS.map((tipo) => (
+                      <button
+                        key={tipo}
+                        type="button"
+                        className="flex items-center gap-1 text-label-sm font-bold text-primary border border-primary/30 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors"
+                        onClick={() => requestDocFile(tipo)}
+                      >
+                        <span className="material-symbols-outlined text-[16px]">upload_file</span>
+                        {tipo}
+                      </button>
+                    ))}
                   </div>
                   {manualDocs.length === 0 ? (
                     <div className="text-label-sm text-on-surface-variant border border-dashed border-outline-variant rounded-xl p-4 text-center">
-                      No hay documentos agregados. Haz clic en "Agregar documento" para incluir documentos al siniestro.
+                      Selecciona un tipo de documento para abrir el explorador de archivos y adjuntar PDF o imágenes reales.
                     </div>
                   ) : (
                     <div className="space-y-3">
                       {manualDocs.map((doc, idx) => (
-                        <div key={idx} className="border border-outline-variant rounded-xl p-4 bg-surface-container-low relative">
+                        <div key={`${doc.file.name}-${idx}`} className="border border-outline-variant rounded-xl p-4 bg-surface-container-low relative">
                           <button
                             type="button"
                             className="absolute top-3 right-3 text-on-surface-variant hover:text-error transition-colors"
@@ -425,37 +488,27 @@ export default function Dashboard() {
                           >
                             <span className="material-symbols-outlined text-[18px]">close</span>
                           </button>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-8">
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Archivo</div>
+                              <p className="text-sm font-medium text-on-surface flex items-center gap-2">
+                                <span className="material-symbols-outlined text-primary text-[18px]">description</span>
+                                {doc.file.name}
+                              </p>
+                              <p className="text-[11px] text-on-surface-variant mt-1">
+                                {(doc.file.size / 1024).toFixed(1)} KB
+                              </p>
+                            </div>
                             <div>
                               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Tipo de documento</div>
-                              <input
-                                type="text"
+                              <select
                                 className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
                                 value={doc.tipo_documento}
                                 onChange={(e) => updateManualDoc(idx, 'tipo_documento', e.target.value)}
-                                placeholder="Póliza, Factura, Reporte médico…"
-                              />
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Entregado?</div>
-                              <select
-                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
-                                value={doc.entregado}
-                                onChange={(e) => updateManualDoc(idx, 'entregado', e.target.value)}
                               >
-                                <option value="Sí">Sí</option>
-                                <option value="No">No</option>
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Legible?</div>
-                              <select
-                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
-                                value={doc.legible}
-                                onChange={(e) => updateManualDoc(idx, 'legible', e.target.value)}
-                              >
-                                <option value="Sí">Sí</option>
-                                <option value="No">No</option>
+                                {DOC_TYPE_OPTIONS.map((t) => (
+                                  <option key={t} value={t}>{t}</option>
+                                ))}
                               </select>
                             </div>
                             <div>
@@ -469,7 +522,7 @@ export default function Dashboard() {
                                 <option value="Sí">Sí</option>
                               </select>
                             </div>
-                            <div className="md:col-span-2">
+                            <div>
                               <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Observación (opcional)</div>
                               <input
                                 type="text"
@@ -496,7 +549,7 @@ export default function Dashboard() {
               <div className="p-5 border-t border-outline-variant flex items-center justify-end gap-3">
                 <button
                   className="px-4 py-2 rounded-lg border border-outline-variant bg-surface hover:bg-surface-container-low font-bold"
-                  onClick={() => { setManualOpen(false); setManualDocs([]); }}
+                  onClick={() => { setManualOpen(false); resetManualForm(); }}
                   disabled={manualSaving}
                 >
                   Cancelar
@@ -530,26 +583,53 @@ export default function Dashboard() {
 
                     setManualSaving(true);
                     try {
-                      const res = await createManualClaim({
-                        ...manual,
-                        monto_reclamado: monto,
-                        monto_estimado: monto,
-                        monto_pagado: 0,
-                        estado: 'Reserva',
-                        etiqueta_fraude_simulada: 0,
-                      });
-                      // Save documents if any were added
-                      if (manualDocs.length > 0 && res.id_siniestro) {
-                        try {
-                          await createManualClaimDocuments(res.id_siniestro, manualDocs);
-                        } catch {
-                          // Docs failed but claim was saved – show warning but don't block
-                          setManualError('Siniestro guardado, pero hubo un error al guardar los documentos.');
-                        }
+                      const res = await createManualClaimComplete(
+                        {
+                          ...manual,
+                          monto_reclamado: monto,
+                          monto_estimado: monto,
+                          monto_pagado: 0,
+                          estado: 'Reserva',
+                          etiqueta_fraude_simulada: 0,
+                        },
+                        manualDocs,
+                      );
+
+                      if (res.claim) {
+                        addClaim(res.claim);
+                      } else {
+                        addClaim({
+                          id_siniestro: res.id_siniestro as unknown as number,
+                          id_poliza: manual.id_poliza as unknown as number,
+                          id_asegurado: manual.id_asegurado as unknown as number,
+                          ramo: manual.ramo,
+                          cobertura: manual.cobertura,
+                          fecha_ocurrencia: manual.fecha_ocurrencia,
+                          fecha_reporte: manual.fecha_reporte,
+                          monto_reclamado: monto,
+                          monto_estimado: monto,
+                          sucursal: manual.sucursal,
+                          beneficiario: manual.beneficiario,
+                          estado: 'Reserva',
+                          descripcion: manual.descripcion,
+                          documentos_completos: manual.documentos_completos,
+                          final_color: 'verde',
+                          final_score: 0,
+                          soft_score: 0,
+                          hard_score: 0,
+                          soft_alerts: [],
+                          hard_alerts: [],
+                        });
                       }
+
+                      setCurrentPage(1);
+                      setActiveTab('all');
                       setManualOpen(false);
-                      setManualDocs([]);
-                      refetch();
+                      resetManualForm();
+
+                      if (res.warning) {
+                        alert(res.warning);
+                      }
                     } catch (e: unknown) {
                       const errorMsg = e instanceof Error ? e.message : 'Error al guardar el siniestro.';
                       setManualError(errorMsg);

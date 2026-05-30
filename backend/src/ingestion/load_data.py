@@ -6,6 +6,7 @@ CSV headers into the canonical field names expected by the application.
 """
 
 from pathlib import Path
+
 import pandas as pd
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
@@ -203,8 +204,29 @@ def load_proveedores(processed: bool = False) -> pd.DataFrame:
     return df
 
 
-def load_documentos(processed: bool = False) -> pd.DataFrame:
-    """Load the Documentos dataset from processed CSV files."""
+def load_documentos(processed: bool = False, prefer_db: bool = True) -> pd.DataFrame:
+    """Load documentos from the relational DB when available, else processed CSV."""
+    if prefer_db:
+        try:
+            from src.storage.relational_db import DEFAULT_DB_PATH, _table_exists, open_db
+
+            db_path = DEFAULT_DB_PATH
+            if db_path.exists():
+                conn = open_db(db_path, write=False)
+                try:
+                    if _table_exists(conn, "documentos"):
+                        df_db = pd.read_sql_query("SELECT * FROM documentos", conn)
+                        if not df_db.empty:
+                            if "fecha_emision" in df_db.columns:
+                                df_db["fecha_emision"] = pd.to_datetime(
+                                    df_db["fecha_emision"], errors="coerce"
+                                )
+                            return df_db
+                finally:
+                    conn.close()
+        except Exception:
+            pass
+
     df = _read_csv("documentos.csv")
     if "fecha_emision" in df.columns:
         df["fecha_emision"] = pd.to_datetime(df["fecha_emision"], errors="coerce")

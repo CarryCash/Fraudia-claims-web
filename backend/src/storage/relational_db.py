@@ -9,6 +9,7 @@ Goal:
 from __future__ import annotations
 
 import sqlite3
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +22,10 @@ from src.ingestion.load_data import (
     load_proveedores,
     load_documentos,
 )
+from src.paths import DEFAULT_DB_PATH as PATHS_DB_PATH
 
-
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-DEFAULT_DB_PATH = PROJECT_ROOT / "fraudia.db"
+DEFAULT_DB_PATH = PATHS_DB_PATH
+_db_lock = threading.RLock()
 
 
 def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
@@ -33,6 +34,19 @@ def _table_exists(conn: sqlite3.Connection, table: str) -> bool:
         (table,),
     )
     return cur.fetchone() is not None
+
+
+def open_db(db_path: Path | None = None, *, write: bool = True) -> sqlite3.Connection:
+    """Open SQLite with WAL + busy timeout to avoid lock timeouts under Flask."""
+    path = Path(db_path or DEFAULT_DB_PATH)
+    ensure_relational_db(path)
+    conn = sqlite3.connect(str(path), timeout=30.0, check_same_thread=False)
+    conn.row_factory = sqlite3.Row
+    if write:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("PRAGMA synchronous=NORMAL")
+        conn.execute("PRAGMA busy_timeout=5000")
+    return conn
 
 
 def ensure_relational_db(db_path: Path = DEFAULT_DB_PATH) -> Path:
@@ -44,16 +58,17 @@ def ensure_relational_db(db_path: Path = DEFAULT_DB_PATH) -> Path:
     db_path = Path(db_path)
     db_path.parent.mkdir(parents=True, exist_ok=True)
 
-    conn = sqlite3.connect(db_path)
-    try:
-        required = {"siniestros", "polizas", "asegurados", "proveedores", "documentos"}
-        if all(_table_exists(conn, t) for t in required):
-            return db_path
+    with _db_lock:
+        conn = sqlite3.connect(str(db_path), timeout=30.0)
+        try:
+            required = {"siniestros", "polizas", "asegurados", "proveedores", "documentos"}
+            if all(_table_exists(conn, t) for t in required):
+                return db_path
 
-        _build_relational_db(conn)
-        return db_path
-    finally:
-        conn.close()
+            _build_relational_db(conn)
+            return db_path
+        finally:
+            conn.close()
 
 
 def _build_relational_db(conn: sqlite3.Connection) -> None:
@@ -62,7 +77,7 @@ def _build_relational_db(conn: sqlite3.Connection) -> None:
     df_pol = load_polizas(processed=True)
     df_aseg = load_asegurados(processed=True)
     df_prov = load_proveedores(processed=True)
-    df_docs = load_documentos(processed=True)
+    df_docs = load_documentos(processed=True, prefer_db=False)
 
     # Normalize IDs as strings for reliable joins
     for df, col in [
