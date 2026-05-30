@@ -6,7 +6,7 @@
  */
 
 export const API_BASE =
-  (import.meta as any).env?.VITE_API_URL ?? 'https://fraudia-claims-web.onrender.com';
+  (import.meta as any).env?.VITE_API_URL ?? '';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -193,6 +193,22 @@ export async function createManualClaim(payload: Record<string, any>): Promise<{
   return apiFetch<{ success: boolean; id_siniestro: string }>(`/api/claims/manual`, {
     method: 'POST',
     body: JSON.stringify(payload),
+  });
+}
+
+export async function createManualClaimDocuments(
+  id_siniestro: string,
+  docs: {
+    tipo_documento: string;
+    entregado: string;
+    legible: string;
+    inconsistencia_detectada: string;
+    observacion?: string;
+  }[],
+): Promise<{ success: boolean }> {
+  return apiFetch<{ success: boolean }>(`/api/claims/${id_siniestro}/documentos/manual`, {
+    method: 'POST',
+    body: JSON.stringify({ documentos: docs }),
   });
 }
 

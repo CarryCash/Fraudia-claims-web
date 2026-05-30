@@ -1,8 +1,8 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
-import { createManualClaim, type Claim } from '../services/api';
+import { createManualClaim, createManualClaimDocuments, type Claim } from '../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +101,30 @@ export default function Dashboard() {
     placa_vehiculo: '',
   });
 
+  // Documents for new claim modal
+  const [manualDocs, setManualDocs] = useState<{
+    tipo_documento: string;
+    entregado: string;
+    legible: string;
+    inconsistencia_detectada: string;
+    observacion: string;
+  }[]>([]);
+
+  const addManualDoc = () => {
+    setManualDocs((prev) => [
+      ...prev,
+      { tipo_documento: '', entregado: 'Sí', legible: 'Sí', inconsistencia_detectada: 'No', observacion: '' },
+    ]);
+  };
+
+  const removeManualDoc = (idx: number) => {
+    setManualDocs((prev) => prev.filter((_, i) => i !== idx));
+  };
+
+  const updateManualDoc = (idx: number, field: string, value: string) => {
+    setManualDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
+  };
+
   // Red claims (for KPI card)
   const { total: totalRojo } = useClaims({ page: 1, limit: 1, color: 'rojo' });
   const { claims: redClaims } = useClaims({ page: 1, limit: 1000, color: 'rojo' });
@@ -190,11 +214,10 @@ export default function Dashboard() {
     });
   }, [filteredClaims, priorityMode]);
 
-  // Reset pagination when filters change
-  const shouldResetPagination = activeTab || priorityMode;
-  if (currentPage !== 1 && shouldResetPagination) {
+  // Reset pagination when tab or priority mode changes
+  useEffect(() => {
     setCurrentPage(1);
-  }
+  }, [activeTab, priorityMode, filterColors.rojo, filterColors.amarillo, filterColors.verde, filterSucursal, filterRamo, filterMissingDocs, q]);
 
   // 3. Pagination
   const totalPages = Math.ceil(sortedClaims.length / itemsPerPage);
@@ -320,7 +343,7 @@ export default function Dashboard() {
           <button
             type="button"
             className="fixed inset-0 bg-black/30 z-40 cursor-default"
-            onClick={() => setManualOpen(false)}
+            onClick={() => { setManualOpen(false); setManualDocs([]); }}
             aria-label="Close modal"
           />
           <div className="fixed inset-0 z-50 flex items-center justify-center px-4 py-8">
@@ -332,7 +355,7 @@ export default function Dashboard() {
                 </div>
                 <button
                   className="px-3 py-2 rounded-lg hover:bg-surface-container-low text-on-surface-variant font-bold"
-                  onClick={() => setManualOpen(false)}
+                  onClick={() => { setManualOpen(false); setManualDocs([]); }}
                 >
                   Cerrar
                 </button>
@@ -375,6 +398,94 @@ export default function Dashboard() {
                   </select>
                 </div>
 
+                {/* Document entries */}
+                <div className="md:col-span-2">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Documentos del siniestro</div>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-label-sm font-bold text-primary hover:bg-primary/10 px-2 py-1 rounded-lg transition-colors"
+                      onClick={addManualDoc}
+                    >
+                      <span className="text-[18px] font-bold leading-none">+</span> Agregar documento
+                    </button>
+                  </div>
+                  {manualDocs.length === 0 ? (
+                    <div className="text-label-sm text-on-surface-variant border border-dashed border-outline-variant rounded-xl p-4 text-center">
+                      No hay documentos agregados. Haz clic en "Agregar documento" para incluir documentos al siniestro.
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      {manualDocs.map((doc, idx) => (
+                        <div key={idx} className="border border-outline-variant rounded-xl p-4 bg-surface-container-low relative">
+                          <button
+                            type="button"
+                            className="absolute top-3 right-3 text-on-surface-variant hover:text-error transition-colors"
+                            onClick={() => removeManualDoc(idx)}
+                          >
+                            <span className="material-symbols-outlined text-[18px]">close</span>
+                          </button>
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Tipo de documento</div>
+                              <input
+                                type="text"
+                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                value={doc.tipo_documento}
+                                onChange={(e) => updateManualDoc(idx, 'tipo_documento', e.target.value)}
+                                placeholder="Póliza, Factura, Reporte médico…"
+                              />
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Entregado?</div>
+                              <select
+                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                value={doc.entregado}
+                                onChange={(e) => updateManualDoc(idx, 'entregado', e.target.value)}
+                              >
+                                <option value="Sí">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Legible?</div>
+                              <select
+                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                value={doc.legible}
+                                onChange={(e) => updateManualDoc(idx, 'legible', e.target.value)}
+                              >
+                                <option value="Sí">Sí</option>
+                                <option value="No">No</option>
+                              </select>
+                            </div>
+                            <div>
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Inconsistencia detectada?</div>
+                              <select
+                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                value={doc.inconsistencia_detectada}
+                                onChange={(e) => updateManualDoc(idx, 'inconsistencia_detectada', e.target.value)}
+                              >
+                                <option value="No">No</option>
+                                <option value="Sí">Sí</option>
+                              </select>
+                            </div>
+                            <div className="md:col-span-2">
+                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Observación (opcional)</div>
+                              <input
+                                type="text"
+                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                value={doc.observacion}
+                                onChange={(e) => updateManualDoc(idx, 'observacion', e.target.value)}
+                                placeholder="Observación sobre el documento…"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
                 {manualError && (
                   <div className="md:col-span-2 bg-error-container text-error rounded-xl p-3 border border-error/20 font-bold text-label-sm">
                     {manualError}
@@ -385,7 +496,7 @@ export default function Dashboard() {
               <div className="p-5 border-t border-outline-variant flex items-center justify-end gap-3">
                 <button
                   className="px-4 py-2 rounded-lg border border-outline-variant bg-surface hover:bg-surface-container-low font-bold"
-                  onClick={() => setManualOpen(false)}
+                  onClick={() => { setManualOpen(false); setManualDocs([]); }}
                   disabled={manualSaving}
                 >
                   Cancelar
@@ -419,7 +530,7 @@ export default function Dashboard() {
 
                     setManualSaving(true);
                     try {
-                      await createManualClaim({
+                      const res = await createManualClaim({
                         ...manual,
                         monto_reclamado: monto,
                         monto_estimado: monto,
@@ -427,7 +538,17 @@ export default function Dashboard() {
                         estado: 'Reserva',
                         etiqueta_fraude_simulada: 0,
                       });
+                      // Save documents if any were added
+                      if (manualDocs.length > 0 && res.id_siniestro) {
+                        try {
+                          await createManualClaimDocuments(res.id_siniestro, manualDocs);
+                        } catch {
+                          // Docs failed but claim was saved – show warning but don't block
+                          setManualError('Siniestro guardado, pero hubo un error al guardar los documentos.');
+                        }
+                      }
                       setManualOpen(false);
+                      setManualDocs([]);
                       refetch();
                     } catch (e: unknown) {
                       const errorMsg = e instanceof Error ? e.message : 'Error al guardar el siniestro.';
@@ -499,7 +620,7 @@ export default function Dashboard() {
           <div className="text-display font-display font-bold text-on-surface mb-2">{missingDocsCount}</div>
           <div className="text-label-md font-bold text-on-surface-variant flex items-center gap-1">
             <span className="material-symbols-outlined text-[16px]">folder_open</span>
-            En los 100 casos cargados
+            En los {total} siniestros cargados
           </div>
         </div>
       </div>

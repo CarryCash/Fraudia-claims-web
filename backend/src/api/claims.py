@@ -156,6 +156,65 @@ def create_manual_claim():
         conn.close()
 
 
+# ── POST /api/claims/<id>/documentos/manual ──────────────────────────────
+@claims_bp.route("/<claim_id>/documentos/manual", methods=["POST"])
+def create_manual_claim_documents(claim_id):
+    """
+    Insert documents for an existing claim into the documentos table.
+
+    Body: JSON with:
+      documentos: list of { tipo_documento, entregado, legible,
+                             inconsistencia_detectada, observacion? }
+    """
+    body = request.get_json(silent=True) or {}
+    docs_input = body.get("documentos", [])
+
+    if not isinstance(docs_input, list) or len(docs_input) == 0:
+        return jsonify({"error": "Se requiere una lista 'documentos' no vacía."}), 400
+
+    ensure_relational_db(DEFAULT_DB_PATH)
+    conn = sqlite3.connect(DEFAULT_DB_PATH)
+    try:
+        conn.row_factory = sqlite3.Row
+
+        # Verify claim exists
+        cur = conn.execute("SELECT 1 FROM siniestros WHERE id_siniestro = ?", (str(claim_id),))
+        if cur.fetchone() is None:
+            return jsonify({"error": f"Siniestro {claim_id} no encontrado."}), 404
+
+        # Get documentos table columns
+        doc_cols = [r["name"] for r in conn.execute("PRAGMA table_info(documentos)").fetchall()]
+
+        import uuid
+        from datetime import date
+
+        inserted = 0
+        for doc in docs_input:
+            doc_id = doc.get("id_documento") or f"DOC-{uuid.uuid4().hex[:8].upper()}"
+            row = {c: None for c in doc_cols}
+            row["id_documento"] = doc_id
+            row["id_siniestro"] = str(claim_id)
+            row["tipo_documento"] = str(doc.get("tipo_documento", "")).strip()
+            row["entregado"] = str(doc.get("entregado", "Sí"))
+            row["legible"] = str(doc.get("legible", "Sí"))
+            row["inconsistencia_detectada"] = str(doc.get("inconsistencia_detectada", "No"))
+            row["observacion"] = doc.get("observacion") or None
+            row["fecha_emision"] = str(date.today())
+
+            # Filter to only existing columns
+            valid = {k: v for k, v in row.items() if k in doc_cols}
+            keys = list(valid.keys())
+            placeholders = ",".join(["?"] * len(keys))
+            sql = f"INSERT OR IGNORE INTO documentos ({','.join(keys)}) VALUES ({placeholders})"
+            conn.execute(sql, tuple(valid[k] for k in keys))
+            inserted += 1
+
+        conn.commit()
+        return jsonify({"success": True, "inserted": inserted})
+    finally:
+        conn.close()
+
+
 # ── GET /api/claims ──────────────────────────────────────────────────────
 @claims_bp.route("", methods=["GET"])
 def list_claims():
