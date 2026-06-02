@@ -1,8 +1,9 @@
 import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
+import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff, TrendingUp } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
 import { createManualClaimComplete, validateDocumentWithAI, type Claim } from '../services/api';
+import InsightsDrawer, { type ProviderAlert, type WeeklyTrendEntry } from './InsightsDrawer';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -251,6 +252,7 @@ export default function Dashboard() {
   const [manualOpen, setManualOpen] = useState(false);
   const [manualSaving, setManualSaving] = useState(false);
   const [manualError, setManualError] = useState<string | null>(null);
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [manual, setManual] = useState({
     id_siniestro: '',
     id_poliza: '',
@@ -363,6 +365,60 @@ export default function Dashboard() {
   const totalRojo = redClaims.length;
   const potentialSavings = redClaims.reduce((acc, c) => acc + (c.monto_reclamado ?? 0), 0);
   const missingDocsCount = allClaims.filter((c) => c.documentos_completos === 'No' || c.documentos_completos === 'Incompleto').length;
+
+  const riskDistribution = useMemo(() => {
+    const distribution = { rojo: 0, amarillo: 0, verde: 0 };
+    allClaims.forEach((claim) => {
+      const color = claim.final_color ?? 'verde';
+      if (color in distribution) {
+        distribution[color as keyof typeof distribution] += 1;
+      }
+    });
+    return distribution;
+  }, [allClaims]);
+
+  const topProviders = useMemo(() => {
+    const counts = new Map<string, number>();
+    allClaims.forEach((claim) => {
+      const provider = String(claim.beneficiario ?? 'Desconocido').trim();
+      if (!provider) return;
+      if (claim.final_color === 'rojo' || claim.final_color === 'amarillo') {
+        counts.set(provider, (counts.get(provider) ?? 0) + 1);
+      }
+    });
+    return Array.from(counts.entries())
+      .map(([provider, alerts]) => ({ provider, alerts }))
+      .sort((a, b) => b.alerts - a.alerts)
+      .slice(0, 6);
+  }, [allClaims]);
+
+  const weeklyTrend = useMemo(() => {
+    const now = new Date();
+    const buckets = Array.from({ length: 6 }, (_, index) => {
+      const start = new Date(now);
+      start.setDate(now.getDate() - (5 - index) * 7);
+      start.setHours(0, 0, 0, 0);
+      return {
+        label: `${start.getDate()}/${start.getMonth() + 1}`,
+        rojo: 0,
+        amarillo: 0,
+        start,
+      };
+    });
+
+    allClaims.forEach((claim) => {
+      const dateString = claim.fecha_ocurrencia || claim.fecha_reporte;
+      if (!dateString) return;
+      const date = new Date(dateString);
+      if (Number.isNaN(date.getTime())) return;
+      const diffWeeks = Math.floor((now.getTime() - date.getTime()) / (1000 * 60 * 60 * 24 * 7));
+      const index = 5 - diffWeeks;
+      if (index < 0 || index >= buckets.length) return;
+      if (claim.final_color === 'rojo') buckets[index].rojo += 1;
+      else if (claim.final_color === 'amarillo') buckets[index].amarillo += 1;
+    });
+    return buckets;
+  }, [allClaims]);
 
   // 1. Filter claims
   const filteredClaims = useMemo(() => {
@@ -982,6 +1038,14 @@ export default function Dashboard() {
             </button>
 
             <button
+              onClick={() => setInsightsOpen(true)}
+              className="px-4 py-2 rounded-lg font-label-md font-bold text-label-sm flex items-center gap-2 transition-colors shadow-sm border border-outline-variant bg-surface text-on-surface-variant hover:bg-surface-container-high"
+            >
+              <TrendingUp size={18} />
+              Insights
+            </button>
+
+            <button
               className={`p-2 text-on-surface-variant hover:bg-surface-container-high rounded transition-colors ${filtersOpen ? 'bg-surface-container-high' : ''}`}
               title="Filtros avanzados"
               onClick={() => setFiltersOpen((v) => !v)}
@@ -1099,6 +1163,15 @@ export default function Dashboard() {
               </div>
             </div>
           </div>
+        )}
+
+        {insightsOpen && (
+          <InsightsDrawer
+            onClose={() => setInsightsOpen(false)}
+            riskDistribution={riskDistribution}
+            topProviders={topProviders as ProviderAlert[]}
+            weeklyTrend={weeklyTrend as WeeklyTrendEntry[]}
+          />
         )}
 
         {/* Mass Actions Banner (Visible when items selected) */}
