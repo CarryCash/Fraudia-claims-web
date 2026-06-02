@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from 'react';
+import { useState, useMemo, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
@@ -150,9 +150,9 @@ function SkeletonRow({ id }: { readonly id: string }) {
 function LiveScorePanel({ score, color, flags }: ReturnType<typeof computeLiveScore>) {
   const pct = score;
   const colorMap = {
-    verde:   { ring: '#22c55e', bg: 'bg-green-50',  text: 'text-green-700',  badge: 'bg-green-100 text-green-800',   label: 'Riesgo Bajo',    icon: 'check_circle' },
-    amarillo: { ring: '#f59e0b', bg: 'bg-yellow-50', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800', label: 'Riesgo Medio',   icon: 'warning' },
-    rojo:    { ring: '#ef4444', bg: 'bg-red-50',    text: 'text-red-700',    badge: 'bg-red-100 text-red-800',       label: 'Riesgo Muy Alto', icon: 'error' },
+    verde: { ring: '#22c55e', bg: 'bg-green-50', text: 'text-green-700', badge: 'bg-green-100 text-green-800', label: 'Riesgo Bajo', icon: 'check_circle' },
+    amarillo: { ring: '#f59e0b', bg: 'bg-yellow-50', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800', label: 'Riesgo Medio', icon: 'warning' },
+    rojo: { ring: '#ef4444', bg: 'bg-red-50', text: 'text-red-700', badge: 'bg-red-100 text-red-800', label: 'Riesgo Muy Alto', icon: 'error' },
   }[color];
 
   // SVG arc gauge params
@@ -206,11 +206,10 @@ function LiveScorePanel({ score, color, flags }: ReturnType<typeof computeLiveSc
               {flags.map((f) => (
                 <span
                   key={f.label}
-                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
-                    f.severity === 'red'    ? 'bg-red-100 text-red-700' :
-                    f.severity === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
-                    'bg-surface-container text-on-surface-variant'
-                  }`}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${f.severity === 'red' ? 'bg-red-100 text-red-700' :
+                      f.severity === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
+                        'bg-surface-container text-on-surface-variant'
+                    }`}
                 >
                   {f.severity === 'red' && <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>}
                   {f.severity === 'yellow' && <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>}
@@ -238,6 +237,7 @@ export default function Dashboard() {
   const [priorityMode, setPriorityMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
   const [currentPage, setCurrentPage] = useState(1);
+  const resetCurrentPage = () => setCurrentPage(1);
   const itemsPerPage = 20;
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [filterColors, setFilterColors] = useState<{ rojo: boolean; amarillo: boolean; verde: boolean }>({
@@ -367,7 +367,7 @@ export default function Dashboard() {
   // 1. Filter claims
   const filteredClaims = useMemo(() => {
     let result = [...allClaims];
-    
+
     if (activeTab === 'review') {
       // "En Revisión Manual": Riesgo Alto o Medio
       result = result.filter(c => c.final_color === 'rojo' || c.final_color === 'amarillo');
@@ -433,24 +433,19 @@ export default function Dashboard() {
   // 2. Sort claims (Priority Mode)
   const sortedClaims = useMemo(() => {
     if (!priorityMode) return filteredClaims;
-    
+
     // Prioridad IA: Rojos primero, ordenados por monto desc, luego amarillos
     return [...filteredClaims].sort((a, b) => {
       const rank = { 'rojo': 3, 'amarillo': 2, 'verde': 1 };
       const rankA = rank[a.final_color || 'verde'];
       const rankB = rank[b.final_color || 'verde'];
-      
+
       if (rankA !== rankB) return rankB - rankA;
-      
+
       // Secondary sort: monto reclamado
       return (b.monto_reclamado || 0) - (a.monto_reclamado || 0);
     });
   }, [filteredClaims, priorityMode]);
-
-  // Reset pagination when tab or priority mode changes
-  useEffect(() => {
-    setCurrentPage(1);
-  }, [activeTab, priorityMode, filterColors.rojo, filterColors.amarillo, filterColors.verde, filterSucursal, filterRamo, filterMissingDocs, q]);
 
   // 3. Pagination
   const totalPages = Math.ceil(sortedClaims.length / itemsPerPage);
@@ -477,10 +472,10 @@ export default function Dashboard() {
 
   const handleExport = () => {
     if (selectedIds.size === 0) return;
-    
+
     // Find the selected claims
     const toExport = allClaims.filter(c => selectedIds.has(c.id_siniestro));
-    
+
     // Create CSV content
     const headers = ['ID', 'Beneficiario', 'Ramo', 'Fecha', 'Monto', 'Riesgo'];
     const rows = toExport.map(c => [
@@ -491,12 +486,12 @@ export default function Dashboard() {
       c.monto_reclamado || 0,
       c.final_color || ''
     ]);
-    
+
     const csvContent = [
       headers.join(','),
       ...rows.map(r => r.map(cell => `"${cell}"`).join(','))
     ].join('\n');
-    
+
     // Trigger download
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const link = document.createElement('a');
@@ -506,7 +501,7 @@ export default function Dashboard() {
     document.body.appendChild(link);
     link.click();
     link.remove();
-    
+
     // Clear selection
     setSelectedIds(new Set());
   };
@@ -514,12 +509,12 @@ export default function Dashboard() {
   const [isExportingNotion, setIsExportingNotion] = useState(false);
   const handleExportToNotion = async () => {
     setIsExportingNotion(true);
-    
+
     try {
-      const toExport = selectedIds.size > 0 
+      const toExport = selectedIds.size > 0
         ? allClaims.filter(c => selectedIds.has(c.id_siniestro))
         : sortedClaims.slice(0, 50); // Export top 50 if none selected
-        
+
       if (toExport.length === 0) {
         alert('No hay siniestros para exportar.');
         return;
@@ -625,7 +620,13 @@ export default function Dashboard() {
                   <select
                     className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary"
                     value={manual.documentos_completos}
-                    onChange={(e) => setManual((p) => ({ ...p, documentos_completos: e.target.value }))}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setManual((p) => ({ ...p, documentos_completos: value }));
+                      if (value === 'No') {
+                        setManualDocs([]);
+                      }
+                    }}
                   >
                     <option value="Sí">Sí</option>
                     <option value="No">No</option>
@@ -634,95 +635,97 @@ export default function Dashboard() {
                 </div>
 
                 {/* Document entries */}
-                <div className="md:col-span-2">
-                  <input
-                    ref={docFileInputRef}
-                    type="file"
-                    className="hidden"
-                    accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
-                    onChange={handleDocFileSelected}
-                  />
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Documentos del siniestro</div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 mb-3">
-                    {DOC_TYPE_OPTIONS.map((tipo) => (
-                      <button
-                        key={tipo}
-                        type="button"
-                        className="flex items-center gap-1 text-label-sm font-bold text-primary border border-primary/30 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors"
-                        onClick={() => requestDocFile(tipo)}
-                      >
-                        <span className="material-symbols-outlined text-[16px]">upload_file</span>
-                        {tipo}
-                      </button>
-                    ))}
-                  </div>
-                  {manualDocs.length === 0 ? (
-                    <div className="text-label-sm text-on-surface-variant border border-dashed border-outline-variant rounded-xl p-4 text-center">
-                      Selecciona un tipo de documento para abrir el explorador de archivos y adjuntar PDF o imágenes reales.
+                {manual.documentos_completos !== 'No' && (
+                  <div className="md:col-span-2">
+                    <input
+                      ref={docFileInputRef}
+                      type="file"
+                      className="hidden"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/*"
+                      onChange={handleDocFileSelected}
+                    />
+                    <div className="flex items-center justify-between mb-3">
+                      <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant">Documentos del siniestro</div>
                     </div>
-                  ) : (
-                    <div className="space-y-3">
-                      {manualDocs.map((doc, idx) => (
-                        <div key={`${doc.file.name}-${idx}`} className="border border-outline-variant rounded-xl p-4 bg-surface-container-low relative">
-                          <button
-                            type="button"
-                            className="absolute top-3 right-3 text-on-surface-variant hover:text-error transition-colors"
-                            onClick={() => removeManualDoc(idx)}
-                          >
-                            <span className="material-symbols-outlined text-[18px]">close</span>
-                          </button>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-8">
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Archivo</div>
-                              <p className="text-sm font-medium text-on-surface flex items-center gap-2">
-                                <span className="material-symbols-outlined text-primary text-[18px]">description</span>
-                                {doc.file.name}
-                              </p>
-                              <p className="text-[11px] text-on-surface-variant mt-1">
-                                {(doc.file.size / 1024).toFixed(1)} KB
-                              </p>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Tipo de documento</div>
-                              <select
-                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
-                                value={doc.tipo_documento}
-                                onChange={(e) => updateManualDoc(idx, 'tipo_documento', e.target.value)}
-                              >
-                                {DOC_TYPE_OPTIONS.map((t) => (
-                                  <option key={t} value={t}>{t}</option>
-                                ))}
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Inconsistencia detectada?</div>
-                              <select
-                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
-                                value={doc.inconsistencia_detectada}
-                                onChange={(e) => updateManualDoc(idx, 'inconsistencia_detectada', e.target.value)}
-                              >
-                                <option value="No">No</option>
-                                <option value="Sí">Sí</option>
-                              </select>
-                            </div>
-                            <div>
-                              <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Observación (opcional)</div>
-                              <input
-                                type="text"
-                                className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
-                                value={doc.observacion}
-                                onChange={(e) => updateManualDoc(idx, 'observacion', e.target.value)}
-                                placeholder="Observación sobre el documento…"
-                              />
-                            </div>
-                          </div>
-                        </div>
+                    <div className="flex flex-wrap gap-2 mb-3">
+                      {DOC_TYPE_OPTIONS.map((tipo) => (
+                        <button
+                          key={tipo}
+                          type="button"
+                          className="flex items-center gap-1 text-label-sm font-bold text-primary border border-primary/30 hover:bg-primary/10 px-3 py-1.5 rounded-lg transition-colors"
+                          onClick={() => requestDocFile(tipo)}
+                        >
+                          <span className="material-symbols-outlined text-[16px]">upload_file</span>
+                          {tipo}
+                        </button>
                       ))}
                     </div>
-                  )}
-                </div>
+                    {manualDocs.length === 0 ? (
+                      <div className="text-label-sm text-on-surface-variant border border-dashed border-outline-variant rounded-xl p-4 text-center">
+                        Selecciona un tipo de documento para abrir el explorador de archivos y adjuntar PDF o imágenes reales.
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {manualDocs.map((doc, idx) => (
+                          <div key={`${doc.file.name}-${idx}`} className="border border-outline-variant rounded-xl p-4 bg-surface-container-low relative">
+                            <button
+                              type="button"
+                              className="absolute top-3 right-3 text-on-surface-variant hover:text-error transition-colors"
+                              onClick={() => removeManualDoc(idx)}
+                            >
+                              <span className="material-symbols-outlined text-[18px]">close</span>
+                            </button>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pr-8">
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Archivo</div>
+                                <p className="text-sm font-medium text-on-surface flex items-center gap-2">
+                                  <span className="material-symbols-outlined text-primary text-[18px]">description</span>
+                                  {doc.file.name}
+                                </p>
+                                <p className="text-[11px] text-on-surface-variant mt-1">
+                                  {(doc.file.size / 1024).toFixed(1)} KB
+                                </p>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Tipo de documento</div>
+                                <select
+                                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                  value={doc.tipo_documento}
+                                  onChange={(e) => updateManualDoc(idx, 'tipo_documento', e.target.value)}
+                                >
+                                  {DOC_TYPE_OPTIONS.map((t) => (
+                                    <option key={t} value={t}>{t}</option>
+                                  ))}
+                                </select>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">¿Inconsistencia detectada?</div>
+                                <select
+                                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                  value={doc.inconsistencia_detectada}
+                                  onChange={(e) => updateManualDoc(idx, 'inconsistencia_detectada', e.target.value)}
+                                >
+                                  <option value="No">No</option>
+                                  <option value="Sí">Sí</option>
+                                </select>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold uppercase tracking-wider text-on-surface-variant mb-1">Observación (opcional)</div>
+                                <input
+                                  type="text"
+                                  className="w-full px-3 py-2 rounded-xl bg-surface-container-lowest border border-outline-variant outline-none focus:border-primary text-sm"
+                                  value={doc.observacion}
+                                  onChange={(e) => updateManualDoc(idx, 'observacion', e.target.value)}
+                                  placeholder="Observación sobre el documento…"
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {manualError && (
                   <div className="md:col-span-2 bg-error-container text-error rounded-xl p-3 border border-error/20 font-bold text-label-sm">
@@ -767,7 +770,7 @@ export default function Dashboard() {
                     }
 
                     setManualSaving(true);
-                    
+
                     // PDF Validation via Gemini
                     const pdfDocs = manualDocs.filter(d => d.file.name.toLowerCase().endsWith('.pdf'));
                     if (pdfDocs.length > 0) {
@@ -789,7 +792,7 @@ export default function Dashboard() {
                             }
                           }
                         } catch (err) {
-                           console.error('Error validando PDF con IA', err);
+                          console.error('Error validando PDF con IA', err);
                         }
                       }
                     }
@@ -919,33 +922,30 @@ export default function Dashboard() {
 
       {/* Main Board */}
       <div className="bg-surface-container-lowest border border-outline-variant rounded-2xl flex flex-col flex-1 overflow-hidden shadow-sm">
-        
+
         {/* Toolbar */}
         <div className="p-4 border-b border-outline-variant flex flex-col md:flex-row justify-between items-center gap-4 bg-surface-container-lowest">
-          
+
           {/* Tabs */}
           <div className="flex gap-2 bg-surface-container-low p-1 rounded-lg">
             <button
-              onClick={() => setActiveTab('all')}
-              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors ${
-                activeTab === 'all' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              onClick={() => { resetCurrentPage(); setActiveTab('all'); }}
+              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors ${activeTab === 'all' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               Todos
             </button>
             <button
-              onClick={() => setActiveTab('review')}
-              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors flex items-center gap-2 ${
-                activeTab === 'review' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              onClick={() => { resetCurrentPage(); setActiveTab('review'); }}
+              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors flex items-center gap-2 ${activeTab === 'review' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               En Revisión Manual
             </button>
             <button
-              onClick={() => setActiveTab('docs')}
-              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors flex items-center gap-2 ${
-                activeTab === 'docs' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
-              }`}
+              onClick={() => { resetCurrentPage(); setActiveTab('docs'); }}
+              className={`px-4 py-1.5 rounded-md text-label-md font-bold transition-colors flex items-center gap-2 ${activeTab === 'docs' ? 'bg-surface-container-lowest text-on-surface shadow-sm' : 'text-on-surface-variant hover:text-on-surface'
+                }`}
             >
               Pendiente Docs
             </button>
@@ -953,25 +953,23 @@ export default function Dashboard() {
 
           <div className="flex items-center gap-3">
             <button
-              onClick={() => setPriorityMode(!priorityMode)}
-              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-label-md font-bold transition-all border ${
-                priorityMode 
-                  ? 'bg-primary/10 border-primary text-primary shadow-sm' 
+              onClick={() => { resetCurrentPage(); setPriorityMode(!priorityMode); }}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-label-md font-bold transition-all border ${priorityMode
+                  ? 'bg-primary/10 border-primary text-primary shadow-sm'
                   : 'bg-surface-container-lowest border-outline-variant text-on-surface-variant hover:bg-surface-container-low'
-              }`}
+                }`}
             >
               <Sparkles size={18} className={priorityMode ? 'text-primary' : 'text-on-surface-variant'} />
               Cola Prioridad IA
             </button>
-            
+
             <div className="w-px h-6 bg-outline-variant/50 mx-1"></div>
 
-            <button 
-              className={`px-4 py-2 rounded-lg font-label-md font-bold text-label-sm flex items-center gap-2 transition-colors shadow-sm ${
-                isExportingNotion 
-                  ? 'bg-surface-container-high text-on-surface-variant cursor-not-allowed' 
+            <button
+              className={`px-4 py-2 rounded-lg font-label-md font-bold text-label-sm flex items-center gap-2 transition-colors shadow-sm ${isExportingNotion
+                  ? 'bg-surface-container-high text-on-surface-variant cursor-not-allowed'
                   : 'bg-surface border border-outline-variant text-primary hover:bg-surface-container-high'
-              }`}
+                }`}
               onClick={handleExportToNotion}
               disabled={isExportingNotion}
             >
@@ -1008,7 +1006,7 @@ export default function Dashboard() {
                         <input
                           type="checkbox"
                           checked={filterColors[c]}
-                          onChange={(e) => setFilterColors((p) => ({ ...p, [c]: e.target.checked }))}
+                          onChange={(e) => { resetCurrentPage(); setFilterColors((p) => ({ ...p, [c]: e.target.checked })); }}
                         />
                         <span className="capitalize font-bold">{c}</span>
                       </label>
@@ -1022,7 +1020,7 @@ export default function Dashboard() {
                   </div>
                   <select
                     value={filterSucursal}
-                    onChange={(e) => setFilterSucursal(e.target.value)}
+                    onChange={(e) => { resetCurrentPage(); setFilterSucursal(e.target.value); }}
                     className="w-full px-3 py-2 rounded-lg bg-surface border border-outline-variant text-body-sm"
                   >
                     {['Todas', ...Array.from(new Set(allClaims.map((c) => String(c.sucursal ?? '').trim()).filter(Boolean)))].map((s) => (
@@ -1039,7 +1037,7 @@ export default function Dashboard() {
                   </div>
                   <select
                     value={filterRamo}
-                    onChange={(e) => setFilterRamo(e.target.value)}
+                    onChange={(e) => { resetCurrentPage(); setFilterRamo(e.target.value); }}
                     className="w-full px-3 py-2 rounded-lg bg-surface border border-outline-variant text-body-sm"
                   >
                     {['Todos', ...Array.from(new Set(allClaims.map((c) => String(c.ramo ?? '').trim()).filter(Boolean)))].map((r) => (
@@ -1058,7 +1056,7 @@ export default function Dashboard() {
                     <input
                       type="checkbox"
                       checked={filterMissingDocs}
-                      onChange={(e) => setFilterMissingDocs(e.target.checked)}
+                      onChange={(e) => { resetCurrentPage(); setFilterMissingDocs(e.target.checked); }}
                     />
                     Solo incompletos
                   </label>
@@ -1089,6 +1087,7 @@ export default function Dashboard() {
                 <button
                   className="px-4 py-2 rounded-lg bg-primary text-on-primary text-label-md font-bold hover:opacity-90"
                   onClick={() => {
+                    resetCurrentPage();
                     setFilterColors({ rojo: true, amarillo: true, verde: true });
                     setFilterSucursal('Todas');
                     setFilterRamo('Todos');
@@ -1110,14 +1109,14 @@ export default function Dashboard() {
               <span>{selectedIds.size} siniestro{selectedIds.size === 1 ? '' : 's'} seleccionado{selectedIds.size === 1 ? '' : 's'}</span>
             </div>
             <div className="flex items-center gap-3">
-              <button 
+              <button
                 className="px-4 py-1.5 bg-on-primary text-primary rounded-lg font-bold text-label-sm flex items-center gap-2 hover:bg-on-primary/90 transition-colors shadow-sm"
                 onClick={handleExport}
               >
                 <Download size={16} />
                 Exportar CSV
               </button>
-              <button 
+              <button
                 className="px-4 py-1.5 border border-on-primary/30 text-on-primary rounded-lg font-bold text-label-sm hover:bg-on-primary/10 transition-colors"
                 onClick={() => setSelectedIds(new Set())}
               >
@@ -1133,8 +1132,8 @@ export default function Dashboard() {
             <thead className="sticky top-0 bg-surface-container-lowest border-b border-outline-variant z-10">
               <tr className="text-label-sm text-on-surface-variant uppercase tracking-wider">
                 <th className="p-4 w-12 text-center">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary"
                     checked={paginatedClaims.length > 0 && selectedIds.size >= paginatedClaims.length}
                     onChange={handleSelectAll}
@@ -1182,14 +1181,14 @@ export default function Dashboard() {
                       className={`transition-colors ${isSelected ? 'bg-primary/5' : 'hover:bg-surface-container-low'}`}
                     >
                       <td className="p-4 text-center">
-                        <input 
-                          type="checkbox" 
+                        <input
+                          type="checkbox"
                           className="w-4 h-4 rounded border-outline-variant text-primary focus:ring-primary"
                           checked={isSelected}
                           onChange={() => handleSelectOne(claim.id_siniestro)}
                         />
                       </td>
-                      <td 
+                      <td
                         className="p-4 text-body-md text-primary font-mono font-medium cursor-pointer"
                         onClick={() => navigate(`/analyzer?id=${claim.id_siniestro}`)}
                       >
@@ -1197,7 +1196,7 @@ export default function Dashboard() {
                       </td>
                       <td className="p-4 text-body-md text-on-surface">{claim.beneficiario ?? '—'}</td>
                       <td className="p-4 text-body-md text-on-surface-variant">
-                        <span className="font-bold">{claim.ramo}</span><br/>
+                        <span className="font-bold">{claim.ramo}</span><br />
                         <span className="text-[11px] opacity-80">{claim.cobertura}</span>
                       </td>
                       <td className="p-4 text-body-md text-on-surface-variant">{formatDate(claim.fecha_ocurrencia)}</td>
@@ -1221,7 +1220,7 @@ export default function Dashboard() {
             </tbody>
           </table>
         </div>
-        
+
         {/* Footer / Pagination */}
         <div className="p-4 border-t border-outline-variant bg-surface-container-lowest text-label-sm text-on-surface-variant flex justify-between items-center">
           <div>
@@ -1234,14 +1233,14 @@ export default function Dashboard() {
               </div>
             )}
             <div className="flex gap-2">
-              <button 
+              <button
                 onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
                 disabled={currentPage === 1}
                 className="px-3 py-1.5 border border-outline-variant rounded-md hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
               >
                 Anterior
               </button>
-              <button 
+              <button
                 onClick={() => setCurrentPage(p => Math.min(totalPages, p + 1))}
                 disabled={currentPage === totalPages || totalPages === 0}
                 className="px-3 py-1.5 border border-outline-variant rounded-md hover:bg-surface-container-low disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
