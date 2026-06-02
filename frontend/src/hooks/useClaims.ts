@@ -17,6 +17,7 @@ interface UseClaimsOptions {
   page?: number;
   limit?: number;
   color?: 'rojo' | 'amarillo' | 'verde';
+  provider?: string;
 }
 
 interface UseClaimsResult {
@@ -30,7 +31,7 @@ interface UseClaimsResult {
 }
 
 export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
-  const { page = 1, limit = 20, color } = options;
+  const { page = 1, limit = 20, color, provider } = options;
 
   const [data, setData] = useState<ClaimsListResponse | null>(null);
   const [loading, setLoading] = useState(true);
@@ -42,7 +43,7 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
     setLoading(true);
     setError(null);
 
-    fetchClaims(page, limit, color)
+    fetchClaims(page, limit, color, provider)
       .then((res) => {
         if (!cancelled) {
           setData(res);
@@ -59,7 +60,7 @@ export function useClaims(options: UseClaimsOptions = {}): UseClaimsResult {
     return () => {
       cancelled = true;
     };
-  }, [page, limit, color, tick]);
+  }, [page, limit, color, provider, tick]);
 
   const refetch = useCallback(() => setTick((t) => t + 1), []);
 

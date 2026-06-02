@@ -39,6 +39,7 @@ from src.ingestion.load_data import (
 )
 from src.rules.fraud_rules import evaluate_record
 from src.explainability.explain_score import combine_scores, generate_explanation, _predict_ml
+from src.explainability.feature_importance_real import get_feature_importance_for_claim, calculate_what_if_scenario
 from src.storage.relational_db import DEFAULT_DB_PATH, ensure_relational_db, open_db
 from src.paths import DATA_ROOT, UPLOADS_ROOT
 
@@ -597,8 +598,9 @@ def list_claims():
     except FileNotFoundError as exc:
         return jsonify({"error": str(exc)}), 404
 
-    # Optional colour filter
+    # Optional filters
     color_filter = request.args.get("color")
+    provider_filter = request.args.get("provider")
 
     from src.explainability.explain_score import _bulk_predict_ml
     ml_probs, is_anomalies = _bulk_predict_ml(df)
@@ -634,6 +636,8 @@ def list_claims():
             evaluation["final_color"] = "verde"
 
         if color_filter and evaluation["final_color"] != color_filter:
+            continue
+        if provider_filter and str(row.get("id_proveedor", "")).strip() != provider_filter.strip():
             continue
         record = row.to_dict()
         record.update(evaluation)
@@ -775,6 +779,94 @@ def explain_claim(claim_id):
         "id_siniestro": claim_id,
         "explanation": explanation,
         "combined_score": evaluation["combined_score"],
+    })
+
+
+# ── GET /api/claims/<id>/feature-importance ───────────────────────────────────
+@claims_bp.route("/<claim_id>/feature-importance", methods=["GET"])
+def get_feature_importance(claim_id):
+    """Get feature importance analysis and sector comparison for a claim."""
+    try:
+        df = _load_claims_df()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    match = df[df["id_siniestro"].astype(str) == str(claim_id)]
+    if match.empty:
+        return jsonify({"error": f"Claim {claim_id} not found"}), 404
+
+    row = match.iloc[0]
+    evaluation = evaluate_record(row)
+    evaluation = _apply_ml_to_evaluation(row, evaluation)
+    
+    # Pass all claims data for real sector comparison
+    importance_data = get_feature_importance_for_claim(
+        row,
+        rule_score=evaluation["soft_score"],
+        ml_prob=evaluation["ml_probability"],
+        all_claims_df=df  # Pass all data
+    )
+    
+    return jsonify({
+        "id_siniestro": claim_id,
+        "combined_score": evaluation["combined_score"],
+        "final_color": evaluation["final_color"],
+        **importance_data
+    })
+
+
+# ── POST /api/claims/<id>/what-if ─────────────────────────────────────────────
+@claims_bp.route("/<claim_id>/what-if", methods=["POST"])
+def what_if_scenario(claim_id):
+    """Calculate risk score under modified conditions (what-if analysis)."""
+    try:
+        df = _load_claims_df()
+    except FileNotFoundError as exc:
+        return jsonify({"error": str(exc)}), 404
+
+    match = df[df["id_siniestro"].astype(str) == str(claim_id)]
+    if match.empty:
+        return jsonify({"error": f"Claim {claim_id} not found"}), 404
+
+    row = match.iloc[0]
+    evaluation = evaluate_record(row)
+    evaluation = _apply_ml_to_evaluation(row, evaluation)
+    
+    # Get modifications from request body
+    body = request.get_json() or {}
+    modifications = body.get("modifications", {})
+    
+    if not modifications:
+        return jsonify({"error": "No modifications provided"}), 400
+    
+    # Pass all claims data for real what-if analysis
+    what_if_result = calculate_what_if_scenario(
+        row,
+        modifications=modifications,
+        rule_score=evaluation["soft_score"],
+        ml_prob=evaluation["ml_probability"],
+        all_claims_df=df  # Pass all data
+    )
+    
+    # Determine color for new score
+    new_score = what_if_result["new_score"]
+    if new_score >= 80:
+        new_color = "rojo"
+    elif new_score >= 50:
+        new_color = "amarillo"
+    else:
+        new_color = "verde"
+    
+    return jsonify({
+        "id_siniestro": claim_id,
+        "original_score": what_if_result["original_score"],
+        "original_color": evaluation["final_color"],
+        "new_score": new_score,
+        "new_color": new_color,
+        "score_change": what_if_result["score_change"],
+        "score_change_percentage": round((what_if_result["score_change"] / what_if_result["original_score"] * 100) if what_if_result["original_score"] > 0 else 0, 1),
+        "modifications": modifications,
+        "importance": what_if_result["modified_importance"]
     })
 
 

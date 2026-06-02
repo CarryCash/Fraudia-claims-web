@@ -1,7 +1,9 @@
 import { useState } from 'react';
 import { useSearchParams, useNavigate } from 'react-router-dom';
 import { useClaim, useClaims } from '../hooks/useClaims';
+import { useFeatureImportance } from '../hooks/useFeatureImportance';
 import { API_BASE, explainClaim, deleteClaim, type Claim, type ClaimDocument } from '../services/api';
+import FeatureImportance from './FeatureImportance';
 import ReactMarkdown from 'react-markdown';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -180,9 +182,9 @@ function ClaimTimeline({ claim }: { claim: Claim }) {
 }
 
 // ── Claim Selector (when no ID in URL) ────────────────────────────────────────
-function ClaimSelector({ onSelect }: { onSelect: (id: number) => void }) {
+function ClaimSelector({ provider, onSelect }: { provider?: string | null; onSelect: (id: number) => void }) {
   const [searchInput, setSearchInput] = useState('');
-  const { claims, loading, removeClaim } = useClaims({ page: 1, limit: 20 });
+  const { claims, loading } = useClaims({ page: 1, limit: 20, provider: provider ?? undefined });
 
   const filtered = claims.filter(
     (c) =>
@@ -196,7 +198,9 @@ function ClaimSelector({ onSelect }: { onSelect: (id: number) => void }) {
       <div className="text-center mb-8">
         <span className="material-symbols-outlined text-[48px] text-on-surface-variant mb-4 block">manage_search</span>
         <h2 className="text-headline-md font-bold text-on-surface mb-2">Selecciona un Siniestro</h2>
-        <p className="text-body-md text-on-surface-variant">Busca por ID, beneficiario o ramo para comenzar el análisis.</p>
+        <p className="text-body-md text-on-surface-variant">
+          {provider ? `Mostrando siniestros del proveedor ${provider}. Usa la búsqueda para afinar.` : 'Busca por ID, beneficiario o ramo para comenzar el análisis.'}
+        </p>
       </div>
 
       <div className="relative mb-6">
@@ -511,11 +515,10 @@ function DeleteModal({
             </button>
             <button
               id="delete-confirm-btn"
-              className={`flex-1 py-2.5 rounded-lg font-label-md font-bold text-on-error transition-all flex items-center justify-center gap-2 ${
-                canDelete && !isDeleting
+              className={`flex-1 py-2.5 rounded-lg font-label-md font-bold text-on-error transition-all flex items-center justify-center gap-2 ${canDelete && !isDeleting
                   ? 'bg-error hover:opacity-90 active:scale-95'
                   : 'bg-error/40 cursor-not-allowed'
-              }`}
+                }`}
               onClick={() => canDelete && onConfirm(motivo)}
               disabled={!canDelete || isDeleting}
             >
@@ -542,10 +545,12 @@ export default function ClaimAnalyzer() {
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
   const idParam = searchParams.get('id');
+  const providerParam = searchParams.get('provider');
 
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [isDocsOpen, setIsDocsOpen] = useState(false);
   const [isDeleteOpen, setIsDeleteOpen] = useState(false);
+  const [isFeatureDrawerOpen, setIsFeatureDrawerOpen] = useState(false);
   const [isDeleting, setIsDeleting] = useState(false);
   const [deleteSuccess, setDeleteSuccess] = useState<string | null>(null);
   const [explanation, setExplanation] = useState<string | null>(null);
@@ -553,6 +558,7 @@ export default function ClaimAnalyzer() {
   const [explainError, setExplainError] = useState<string | null>(null);
 
   const { claim, loading, error } = useClaim(idParam);
+  const { data: importanceData, loading: importanceLoading, error: importanceError, runWhatIfScenario } = useFeatureImportance(idParam);
 
   // Normalize scores: if backend sends values in 0-1, scale to 0-100
   const rawFinal = claim?.final_score ?? 0;
@@ -613,7 +619,7 @@ export default function ClaimAnalyzer() {
 
   // No ID selected → show selector
   if (!idParam) {
-    return <ClaimSelector onSelect={handleSelectClaim} />;
+    return <ClaimSelector provider={providerParam} onSelect={handleSelectClaim} />;
   }
 
   return (
@@ -630,7 +636,19 @@ export default function ClaimAnalyzer() {
           </nav>
           <h2 className="font-headline-lg text-headline-lg text-on-surface">Analizador de Siniestros</h2>
         </div>
-        
+        {!loading && claim && (
+          <div className="flex gap-3">
+            <button
+              onClick={() => setIsFeatureDrawerOpen(true)}
+              className="px-4 py-2.5 bg-primary text-on-primary rounded-lg font-label-md font-bold hover:opacity-90 active:scale-95 transition-all flex items-center gap-2"
+            >
+              <span className="material-symbols-outlined text-[20px]">trending_up</span>
+              Importancia de Factores
+            </button>
+            
+            
+          </div>
+        )}
       </div>
 
       {/* Error state */}
@@ -979,6 +997,59 @@ export default function ClaimAnalyzer() {
               </div>
             )}
           </div>
+        </div>
+      </div>
+
+      {/* Feature Importance Drawer */}
+      <div
+        className={`fixed right-0 top-0 h-full w-[580px] bg-surface-container-lowest border-l border-outline-variant shadow-2xl z-40 transform transition-transform duration-300 ease-in-out overflow-hidden flex flex-col ${isFeatureDrawerOpen ? 'translate-x-0' : 'translate-x-full'}`}
+        id="feature-drawer"
+      >
+        <div className="p-6 border-b border-outline-variant flex justify-between items-center bg-surface shrink-0">
+          <h3 className="font-headline-md text-headline-md text-on-surface">Importancia de Factores</h3>
+          <button className="p-2 hover:bg-surface-container-high rounded-full transition-colors" onClick={() => setIsFeatureDrawerOpen(false)}>
+            <span className="material-symbols-outlined">close</span>
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto no-scrollbar">
+          {importanceLoading ? (
+            <div className="flex flex-col items-center justify-center h-full gap-4 text-on-surface-variant p-6">
+              <div className="w-12 h-12 bg-primary rounded-xl flex items-center justify-center animate-pulse">
+                <span className="material-symbols-outlined text-on-primary">analytics</span>
+              </div>
+              <p className="text-body-md">Calculando importancia de factores…</p>
+              <div className="flex gap-1">
+                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '0ms' }} />
+                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '150ms' }} />
+                <span className="w-2 h-2 rounded-full bg-primary animate-bounce" style={{ animationDelay: '300ms' }} />
+              </div>
+            </div>
+          ) : importanceError ? (
+            <div className="p-6">
+              <div className="p-4 bg-error-container text-error rounded-xl">
+                <p className="font-bold mb-1">Error</p>
+                <p className="text-label-sm">{importanceError}</p>
+              </div>
+            </div>
+          ) : importanceData ? (
+            <div className="p-6">
+              <FeatureImportance
+                topFactors={importanceData.top_factors}
+                sectorComparison={importanceData.sector_comparison}
+                riskFactorsBreakdown={importanceData.risk_factors_breakdown}
+                originalScore={importanceData.combined_score}
+                finalColor={importanceData.final_color}
+                claimId={String(idParam)}
+                onWhatIfChange={runWhatIfScenario}
+              />
+            </div>
+          ) : (
+            <div className="text-center text-on-surface-variant py-12 px-6">
+              <span className="material-symbols-outlined text-[48px] mb-2 block">analytics</span>
+              <p className="text-body-md">No hay datos de importancia disponibles.</p>
+            </div>
+          )}
         </div>
       </div>
     </>

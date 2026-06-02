@@ -175,12 +175,14 @@ export async function fetchClaims(
   page = 1,
   limit = 20,
   color?: 'rojo' | 'amarillo' | 'verde',
+  provider?: string,
 ): Promise<ClaimsListResponse> {
   const params = new URLSearchParams({
     page: String(page),
     limit: String(limit),
   });
   if (color) params.set('color', color);
+  if (provider) params.set('provider', provider);
   return apiFetch<ClaimsListResponse>(`/api/claims?${params}`);
 }
 
@@ -325,6 +327,57 @@ export async function explainClaim(
 ): Promise<ExplainResponse> {
   return apiFetch<ExplainResponse>(`/api/claims/${id}/explain`, {
     method: 'POST',
+  });
+}
+
+/**
+ * Get feature importance analysis with top 5 factors and sector comparison.
+ */
+export async function getFeatureImportance(
+  id: number | string,
+): Promise<{
+  id_siniestro: string;
+  combined_score: number;
+  final_color: 'rojo' | 'amarillo' | 'verde';
+  top_factors: Array<{
+    name: string;
+    feature: string;
+    value: number;
+    contribution: number;
+    impact: 'high' | 'medium' | 'low';
+    threshold: number;
+  }>;
+  sector_comparison: {
+    this_claim: Record<string, number>;
+    sector_avg: Record<string, number>;
+    percentile: number;
+    percentile_description: string;
+  };
+  risk_factors_breakdown: Record<string, { score: number; factors: string[] }>;
+}> {
+  return apiFetch(`/api/claims/${id}/feature-importance`, { method: 'GET' });
+}
+
+/**
+ * Calculate what-if scenario: show how score changes if features are modified.
+ */
+export async function calculateWhatIfScenario(
+  id: number | string,
+  modifications: Record<string, number>,
+): Promise<{
+  id_siniestro: string;
+  original_score: number;
+  original_color: 'rojo' | 'amarillo' | 'verde';
+  new_score: number;
+  new_color: 'rojo' | 'amarillo' | 'verde';
+  score_change: number;
+  score_change_percentage: number;
+  modifications: Record<string, number>;
+  importance: any;
+}> {
+  return apiFetch(`/api/claims/${id}/what-if`, {
+    method: 'POST',
+    body: JSON.stringify({ modifications }),
   });
 }
 
