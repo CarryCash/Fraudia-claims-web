@@ -36,6 +36,8 @@ export interface Claim {
   documentos_completos?: string;
   documentos?: ClaimDocument[];
   is_anomaly?: boolean;
+  proveedor_lista_restrictiva?: number | string | boolean;
+  poliza_fecha_inicio?: string;
 }
 
 export interface ClaimDocument {
@@ -278,6 +280,30 @@ export async function uploadClaimDocument(
     throw new Error(errorBody.error ?? `HTTP ${res.status}`);
   }
   return res.json();
+}
+
+export interface ValidationResult {
+  isValid: boolean;
+  inconsistencies: string[];
+}
+
+export async function validateDocumentWithAI(
+  file: File,
+  claimData: Record<string, unknown>
+): Promise<ValidationResult> {
+  const form = new FormData();
+  form.append('file', file);
+  form.append('claim_data', JSON.stringify(claimData));
+
+  const url = `${API_BASE}/api/claims/validate-document`;
+  const res = await fetch(url, { method: 'POST', body: form });
+  
+  if (!res.ok) {
+    const errorBody = await res.json().catch(() => ({ error: res.statusText }));
+    throw new Error(errorBody.error ?? `HTTP ${res.status}`);
+  }
+  
+  return res.json() as Promise<ValidationResult>;
 }
 
 /**

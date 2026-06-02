@@ -495,6 +495,29 @@ def create_manual_claim_documents(claim_id):
         conn.close()
 
 
+# ── POST /api/claims/validate-document ─────────────────────────────
+@claims_bp.route("/validate-document", methods=["POST"])
+def validate_document():
+    """Validate a document using Gemini AI to cross-check dates, amounts, and names."""
+    uploaded = request.files.get("file")
+    if uploaded is None or not uploaded.filename:
+        return jsonify({"error": "Se requiere un archivo PDF en el campo 'file'."}), 400
+
+    ext = Path(uploaded.filename).suffix.lower()
+    if ext != ".pdf":
+        return jsonify({"error": "Solo se soportan archivos PDF para la validación con IA."}), 400
+
+    claim_data_str = request.form.get("claim_data", "{}")
+    try:
+        claim_data = json.loads(claim_data_str)
+    except json.JSONDecodeError:
+        return jsonify({"error": "claim_data inválido."}), 400
+
+    from src.ai_agent.pdf_validator import validate_pdf_with_gemini
+    result = validate_pdf_with_gemini(uploaded, claim_data)
+    
+    return jsonify(result)
+
 # ── POST /api/claims/<id>/documentos/upload ─────────────────────────────
 @claims_bp.route("/<claim_id>/documentos/upload", methods=["POST"])
 def upload_claim_document(claim_id):

@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { FileText, TriangleAlert, PiggyBank, Download, RefreshCw, Sparkles, CheckSquare, Settings2, WifiOff } from 'lucide-react';
 import { useClaims } from '../hooks/useClaims';
-import { createManualClaimComplete, type Claim } from '../services/api';
+import { createManualClaimComplete, validateDocumentWithAI, type Claim } from '../services/api';
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -45,6 +45,93 @@ function norm(s: unknown): string {
   return '';
 }
 
+function computeLiveScore(
+  manual: { cobertura: string; descripcion: string; beneficiario: string; fecha_ocurrencia: string; fecha_reporte: string; monto_reclamado: string; documentos_completos: string },
+  docs: { inconsistencia_detectada: string }[],
+  listaRestrictiva: string[]
+): { score: number; color: 'verde' | 'amarillo' | 'rojo'; flags: { label: string; severity: 'red' | 'yellow' | 'gray' }[] } {
+  let score = 0;
+  const flags: { label: string; severity: 'red' | 'yellow' | 'gray' }[] = [];
+
+  const cob = manual.cobertura.toLowerCase();
+  const desc = manual.descripcion.toLowerCase();
+  const ben = manual.beneficiario.toLowerCase();
+
+  // RF03: Proveedor en lista restrictiva → +30 pts (rojo)
+  if (listaRestrictiva.some((bad) => bad && ben.includes(bad))) {
+    score += 30;
+    flags.push({ label: 'RF03: Proveedor en lista restrictiva', severity: 'red' });
+  }
+
+  // RF01: Cobertura Robo + Pérdida Total → +25 pts (rojo)
+  const isRobo = cob.includes('robo');
+  if (isRobo) {
+    score += 10;
+    flags.push({ label: 'Cobertura de Robo', severity: 'yellow' });
+    if (desc.includes('robo total') || desc.includes('pérdida total') || desc.includes('perdida total')) {
+      score += 20;
+      flags.push({ label: 'RF01: Pérdida Total por Robo', severity: 'red' });
+    }
+  }
+
+  // Days between occurrence and report
+  if (manual.fecha_ocurrencia && manual.fecha_reporte) {
+    const fo = new Date(manual.fecha_ocurrencia).getTime();
+    const fr = new Date(manual.fecha_reporte).getTime();
+    if (!isNaN(fo) && !isNaN(fr) && fr >= fo) {
+      const days = Math.floor((fr - fo) / 86400000);
+      if (isRobo && days > 4) {
+        score += 15;
+        flags.push({ label: `RF06: Demora atípica en reporte de robo (${days}d)`, severity: 'red' });
+      } else if (days > 7) {
+        score += 10;
+        flags.push({ label: `Reporte muy tardío: ${days} días`, severity: 'yellow' });
+      } else if (days > 3) {
+        score += 5;
+        flags.push({ label: `Reporte tardío: ${days} días`, severity: 'gray' });
+      }
+    }
+  }
+
+  // Documentos incompletos
+  if (manual.documentos_completos === 'No') {
+    score += 10;
+    flags.push({ label: 'Documentación incompleta', severity: 'yellow' });
+  } else if (manual.documentos_completos === 'Incompleto') {
+    score += 6;
+    flags.push({ label: 'Documentación parcial', severity: 'gray' });
+  }
+
+  // Inconsistencias en documentos adjuntos
+  const nInc = docs.filter((d) => d.inconsistencia_detectada === 'Sí').length;
+  if (nInc > 0) {
+    score += nInc * 10;
+    flags.push({ label: `${nInc} doc${nInc > 1 ? 's' : ''} con inconsistencia detectada`, severity: 'red' });
+  }
+
+  // Descripción con narrativa sospechosa
+  const suspKeys = ['inconsistente', 'imposible', 'ilógico', 'ilogico', 'falso', 'alterado', 'sospechoso', 'no recuerda', 'no hay testigos'];
+  const hitKeys = suspKeys.filter((k) => desc.includes(k));
+  if (hitKeys.length > 0) {
+    score += Math.min(hitKeys.length * 5, 15);
+    flags.push({ label: 'Narrativa con términos sospechosos', severity: 'yellow' });
+  }
+
+  // Monto elevado
+  const monto = parseFloat(manual.monto_reclamado) || 0;
+  if (monto > 20000) {
+    score += 8;
+    flags.push({ label: `Monto muy elevado: $${monto.toLocaleString('es-EC')}`, severity: 'yellow' });
+  } else if (monto > 8000) {
+    score += 4;
+    flags.push({ label: `Monto considerable: $${monto.toLocaleString('es-EC')}`, severity: 'gray' });
+  }
+
+  score = Math.min(score, 100);
+  const color: 'verde' | 'amarillo' | 'rojo' = score >= 75 ? 'rojo' : score >= 35 ? 'amarillo' : 'verde';
+  return { score, color, flags };
+}
+
 // ── Skeleton ──────────────────────────────────────────────────────────────────
 function SkeletonRow({ id }: { readonly id: string }) {
   return (
@@ -55,6 +142,86 @@ function SkeletonRow({ id }: { readonly id: string }) {
         </td>
       ))}
     </tr>
+  );
+}
+
+// ── Dashboard / Claims View ───────────────────────────────────────────────────
+// ── Live Score Panel UI ──────────────────────────────────────────────────────
+function LiveScorePanel({ score, color, flags }: ReturnType<typeof computeLiveScore>) {
+  const pct = score;
+  const colorMap = {
+    verde:   { ring: '#22c55e', bg: 'bg-green-50',  text: 'text-green-700',  badge: 'bg-green-100 text-green-800',   label: 'Riesgo Bajo',    icon: 'check_circle' },
+    amarillo: { ring: '#f59e0b', bg: 'bg-yellow-50', text: 'text-yellow-700', badge: 'bg-yellow-100 text-yellow-800', label: 'Riesgo Medio',   icon: 'warning' },
+    rojo:    { ring: '#ef4444', bg: 'bg-red-50',    text: 'text-red-700',    badge: 'bg-red-100 text-red-800',       label: 'Riesgo Muy Alto', icon: 'error' },
+  }[color];
+
+  // SVG arc gauge params
+  const R = 40;
+  const CIRCUMFERENCE = 2 * Math.PI * R;
+  const dash = (pct / 100) * CIRCUMFERENCE;
+
+  return (
+    <div className={`md:col-span-2 rounded-xl border ${color === 'rojo' ? 'border-red-200' : color === 'amarillo' ? 'border-yellow-200' : 'border-green-200'} ${colorMap.bg} p-4 transition-all duration-500`}>
+      <div className="flex items-center gap-5">
+        {/* Gauge SVG */}
+        <div className="relative shrink-0 w-[96px] h-[96px] flex items-center justify-center">
+          <svg width="96" height="96" viewBox="0 0 96 96" className="-rotate-90">
+            <circle cx="48" cy="48" r={R} fill="none" stroke="#e5e7eb" strokeWidth="8" />
+            <circle
+              cx="48" cy="48" r={R} fill="none"
+              stroke={colorMap.ring}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={`${dash} ${CIRCUMFERENCE}`}
+              style={{ transition: 'stroke-dasharray 0.5s ease, stroke 0.5s ease' }}
+            />
+          </svg>
+          <div className="absolute flex flex-col items-center">
+            <span className={`text-2xl font-black leading-none ${colorMap.text}`} style={{ transition: 'color 0.4s' }}>{score}</span>
+            <span className="text-[9px] font-bold text-on-surface-variant uppercase tracking-wider">/ 100</span>
+          </div>
+        </div>
+
+        {/* Info */}
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2 mb-2">
+            <span className={`material-symbols-outlined text-[18px] ${colorMap.text}`} style={{ fontVariationSettings: "'FILL' 1" }}>{colorMap.icon}</span>
+            <span className={`text-label-lg font-black ${colorMap.text}`}>{colorMap.label}</span>
+            <span className="text-label-sm text-on-surface-variant ml-auto">Score en vivo</span>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full h-2 bg-white/60 rounded-full overflow-hidden mb-3 border border-black/5">
+            <div
+              className="h-full rounded-full transition-all duration-500"
+              style={{ width: `${pct}%`, background: colorMap.ring }}
+            />
+          </div>
+
+          {/* Active flags */}
+          {flags.length === 0 ? (
+            <p className="text-label-sm text-on-surface-variant">Sin alertas activas — completa más campos para evaluar.</p>
+          ) : (
+            <div className="flex flex-wrap gap-1.5">
+              {flags.map((f) => (
+                <span
+                  key={f.label}
+                  className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-bold ${
+                    f.severity === 'red'    ? 'bg-red-100 text-red-700' :
+                    f.severity === 'yellow' ? 'bg-yellow-100 text-yellow-700' :
+                    'bg-surface-container text-on-surface-variant'
+                  }`}
+                >
+                  {f.severity === 'red' && <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>error</span>}
+                  {f.severity === 'yellow' && <span className="material-symbols-outlined text-[11px]" style={{ fontVariationSettings: "'FILL' 1" }}>warning</span>}
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -172,6 +339,22 @@ export default function Dashboard() {
   const updateManualDoc = (idx: number, field: keyof ManualDocEntry, value: string) => {
     setManualDocs((prev) => prev.map((d, i) => (i === idx ? { ...d, [field]: value } : d)));
   };
+
+  // ── Live Score ────────────────────────────────────────────────────────────
+  const listaRestrictiva = useMemo(() => {
+    return Array.from(new Set(
+      allClaims
+        .filter(c => c.proveedor_lista_restrictiva === 1 || c.proveedor_lista_restrictiva === true || c.proveedor_lista_restrictiva === '1' || c.proveedor_lista_restrictiva === 'Sí')
+        .map(c => c.beneficiario?.toLowerCase().trim())
+        .filter(Boolean)
+    )) as string[];
+  }, [allClaims]);
+
+  const liveScore = useMemo(
+    () => computeLiveScore(manual, manualDocs, listaRestrictiva),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [manual.cobertura, manual.descripcion, manual.beneficiario, manual.fecha_ocurrencia, manual.fecha_reporte, manual.monto_reclamado, manual.documentos_completos, manualDocs, listaRestrictiva]
+  );
 
   const redClaims = useMemo(
     () => allClaims.filter((c) => c.final_color === 'rojo'),
@@ -412,6 +595,8 @@ export default function Dashboard() {
               </div>
 
               <div className="p-5 grid grid-cols-1 md:grid-cols-2 gap-4">
+                {/* ── Live Score Panel ── */}
+                <LiveScorePanel score={liveScore.score} color={liveScore.color} flags={liveScore.flags} />
                 <Field label="ID Siniestro" value={manual.id_siniestro} onChange={(v) => setManual((p) => ({ ...p, id_siniestro: v }))} placeholder="1001" />
                 <Field label="ID Póliza" value={manual.id_poliza} onChange={(v) => setManual((p) => ({ ...p, id_poliza: v }))} placeholder="POL-XXXXXX" />
                 <Field label="ID Asegurado" value={manual.id_asegurado} onChange={(v) => setManual((p) => ({ ...p, id_asegurado: v }))} placeholder="ASEG-XXXXXX" />
@@ -582,6 +767,33 @@ export default function Dashboard() {
                     }
 
                     setManualSaving(true);
+                    
+                    // PDF Validation via Gemini
+                    const pdfDocs = manualDocs.filter(d => d.file.name.toLowerCase().endsWith('.pdf'));
+                    if (pdfDocs.length > 0) {
+                      for (const doc of pdfDocs) {
+                        try {
+                          const result = await validateDocumentWithAI(doc.file, {
+                            ...manual,
+                            monto_reclamado: monto
+                          });
+                          if (!result.isValid && result.inconsistencies.length > 0) {
+                            const proceed = window.confirm(
+                              `⚠️ Inconsistencias detectadas en ${doc.file.name} por IA:\n\n- ` +
+                              result.inconsistencies.join('\n- ') +
+                              '\n\n¿Deseas guardar el siniestro de todos modos?'
+                            );
+                            if (!proceed) {
+                              setManualSaving(false);
+                              return;
+                            }
+                          }
+                        } catch (err) {
+                           console.error('Error validando PDF con IA', err);
+                        }
+                      }
+                    }
+
                     try {
                       const res = await createManualClaimComplete(
                         {

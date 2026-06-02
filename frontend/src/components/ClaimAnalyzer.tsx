@@ -59,6 +59,126 @@ function ScoreRing({ score, color }: { score: number; color: Claim['final_color'
   );
 }
 
+// ── Claim Timeline ───────────────────────────────────────────────────────
+interface TimelineStep {
+  key: string;
+  label: string;
+  icon: string;
+  date: string | undefined;
+}
+
+function daysBetween(a: string | undefined, b: string | undefined): number | null {
+  if (!a || !b) return null;
+  try {
+    const da = new Date(a);
+    const db = new Date(b);
+    if (isNaN(da.getTime()) || isNaN(db.getTime())) return null;
+    return Math.round((db.getTime() - da.getTime()) / (1000 * 60 * 60 * 24));
+  } catch {
+    return null;
+  }
+}
+
+function gapSeverity(days: number | null): 'ok' | 'warning' | 'danger' {
+  if (days === null) return 'ok';
+  if (days < 0) return 'danger';
+  if (days > 90) return 'danger';
+  if (days > 30) return 'warning';
+  return 'ok';
+}
+
+function ClaimTimeline({ claim }: { claim: Claim }) {
+  const docs = claim.documentos ?? [];
+  const docDates = docs
+    .map((d) => d.fecha_emision)
+    .filter((d): d is string => !!d)
+    .sort();
+  const latestDocDate = docDates.length > 0 ? docDates[docDates.length - 1] : undefined;
+
+  const steps: TimelineStep[] = [
+    { key: 'poliza', label: 'Inicio Póliza', icon: 'shield', date: claim.poliza_fecha_inicio },
+    { key: 'ocurrencia', label: 'Ocurrencia', icon: 'fmd_bad', date: claim.fecha_ocurrencia },
+    { key: 'reporte', label: 'Reporte', icon: 'edit_document', date: claim.fecha_reporte },
+    { key: 'documentos', label: 'Documentos', icon: 'folder_open', date: latestDocDate },
+  ];
+
+  const gaps: { days: number | null; severity: 'ok' | 'warning' | 'danger' }[] = [];
+  for (let i = 0; i < steps.length - 1; i++) {
+    const d = daysBetween(steps[i].date, steps[i + 1].date);
+    gaps.push({ days: d, severity: gapSeverity(d) });
+  }
+
+  return (
+    <div className="bg-surface-container-lowest border border-outline-variant rounded-xl p-6 hover:bg-surface-container-low transition-colors duration-200">
+      <div className="flex items-center justify-between mb-2">
+        <h3 className="font-label-sm text-label-sm text-on-surface-variant uppercase tracking-wider">
+          Línea de Tiempo del Siniestro
+        </h3>
+        <span className="material-symbols-outlined text-on-surface-variant text-[20px]">timeline</span>
+      </div>
+
+      <div className="claim-timeline">
+        {steps.map((step, i) => {
+          const filled = !!step.date;
+          return (
+            <div className="timeline-step" key={step.key}>
+              <div className={`timeline-node ${filled ? 'timeline-node--filled' : 'timeline-node--empty'}`}>
+                <span className="material-symbols-outlined" style={filled ? { fontVariationSettings: "'FILL' 1" } : {}}>
+                  {step.icon}
+                </span>
+              </div>
+              <div className="timeline-label">
+                <span className="timeline-label__title">{step.label}</span>
+                <span className={`timeline-label__date ${!filled ? 'timeline-label__date--empty' : ''}`}>
+                  {filled ? formatDate(step.date) : 'Sin dato'}
+                </span>
+              </div>
+
+              {i < gaps.length && gaps[i].days !== null && gaps[i].severity !== 'ok' && (
+                <div className="timeline-gap-flag" style={{ left: 'calc(50% + 50%)', top: '-2px' }}>
+                  <span
+                    className={`gap-badge ${gaps[i].severity === 'danger' ? 'gap-badge--danger' : 'gap-badge--warning'}`}
+                    title={`${gaps[i].days} días entre ${steps[i].label} y ${steps[i + 1].label}`}
+                  >
+                    <span className="material-symbols-outlined">
+                      {gaps[i].severity === 'danger' ? 'error' : 'warning'}
+                    </span>
+                    {gaps[i].days! < 0 ? `${Math.abs(gaps[i].days!)}d antes` : `${gaps[i].days}d`}
+                  </span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      <div className="flex justify-center gap-6 mt-3 flex-wrap">
+        {gaps.map((gap, i) => {
+          if (gap.days === null) return null;
+          const color =
+            gap.severity === 'danger'
+              ? 'text-error'
+              : gap.severity === 'warning'
+                ? 'text-yellow-700'
+                : 'text-on-surface-variant';
+          return (
+            <div key={i} className={`flex items-center gap-1.5 text-[11px] font-bold ${color}`}>
+              {gap.severity !== 'ok' && (
+                <span className="material-symbols-outlined text-[13px]">
+                  {gap.severity === 'danger' ? 'error' : 'warning'}
+                </span>
+              )}
+              <span>
+                {steps[i].label} → {steps[i + 1].label}: {gap.days! < 0 ? `−${Math.abs(gap.days!)}` : gap.days}d
+              </span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Claim Selector (when no ID in URL) ────────────────────────────────────────
 function ClaimSelector({ onSelect }: { onSelect: (id: number) => void }) {
   const [searchInput, setSearchInput] = useState('');
@@ -566,6 +686,11 @@ export default function ClaimAnalyzer() {
                 <p className="text-on-error-container text-sm">El modelo no supervisado (Isolation Forest) detectó que los patrones numéricos de este siniestro son atípicos frente al histórico.</p>
               </div>
             </div>
+          )}
+
+          {/* Claim Timeline */}
+          {!loading && claim && (
+            <ClaimTimeline claim={claim} />
           )}
 
           {/* Analysis Breakdown Cards */}

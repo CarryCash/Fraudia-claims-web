@@ -468,3 +468,224 @@
   font-weight: 700;
   color: #000; /* O el color destacado que uses en modo claro/oscuro */
 }
+
+/* ═══════════════════════════════════════════════════════════════════════
+   CLAIM TIMELINE
+   ═══════════════════════════════════════════════════════════════════════ */
+
+.claim-timeline {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding: 28px 0 12px;
+}
+
+/* The horizontal connector line behind nodes */
+.claim-timeline::before {
+  content: '';
+  position: absolute;
+  top: 48px;
+  left: 32px;
+  right: 32px;
+  height: 3px;
+  background: linear-gradient(90deg,
+    var(--md-sys-color-outline-variant, #c4c7c7) 0%,
+    var(--md-sys-color-outline-variant, #c4c7c7) 100%
+  );
+  border-radius: 2px;
+  z-index: 0;
+}
+
+/* Each timeline step */
+.timeline-step {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Node circle */
+.timeline-node {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid var(--md-sys-color-outline-variant, #c4c7c7);
+  background: var(--md-sys-color-surface-container-lowest, #fff);
+  transition: all 0.3s cubic-bezier(.4,0,.2,1);
+  box-shadow: 0 2px 8px rgba(0,0,0,.06);
+}
+
+.timeline-node .material-symbols-outlined {
+  font-size: 18px;
+  color: var(--md-sys-color-on-surface-variant, #6b6b6b);
+}
+
+/* Filled / active state */
+.timeline-node--filled {
+  background: var(--md-sys-color-primary, #6750a4);
+  border-color: var(--md-sys-color-primary, #6750a4);
+  box-shadow: 0 0 0 4px rgba(103,80,164,.15), 0 2px 8px rgba(0,0,0,.1);
+}
+
+.timeline-node--filled .material-symbols-outlined {
+  color: var(--md-sys-color-on-primary, #fff);
+}
+
+/* Missing / empty state */
+.timeline-node--empty {
+  border-color: var(--md-sys-color-outline-variant, #c4c7c7);
+  border-style: dashed;
+  background: var(--md-sys-color-surface-container-high, #ece6f0);
+}
+
+.timeline-node--empty .material-symbols-outlined {
+  color: var(--md-sys-color-on-surface-variant, #999);
+}
+
+/* Label below node */
+.timeline-label {
+  margin-top: 10px;
+  text-align: center;
+}
+
+.timeline-label__title {
+  display: block;
+  font-size: 0.65rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--md-sys-color-on-surface-variant, #6b6b6b);
+  line-height: 1.3;
+}
+
+.timeline-label__date {
+  display: block;
+  margin-top: 3px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--md-sys-color-on-surface, #1d1b20);
+  font-variant-numeric: tabular-nums;
+}
+
+.timeline-label__date--empty {
+  font-style: italic;
+  color: var(--md-sys-color-on-surface-variant, #999);
+  font-weight: 400;
+}
+
+/* ── Gap flags between timeline nodes ─────────────────────────────── */
+.timeline-gap-flag {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  pointer-events: auto;
+}
+
+.timeline-gap-connector {
+  flex: 0 0 auto;
+  position: absolute;
+  top: 44px;
+  height: 3px;
+  z-index: 0;
+  border-radius: 2px;
+}
+
+.timeline-gap-connector--warning {
+  background: repeating-linear-gradient(
+    90deg,
+    #f59e0b 0px,
+    #f59e0b 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+.timeline-gap-connector--danger {
+  background: repeating-linear-gradient(
+    90deg,
+    #ef4444 0px,
+    #ef4444 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+.gap-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 2px 8px;
+  border-radius: 10px;
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  box-shadow: 0 1px 4px rgba(0,0,0,.12);
+  animation: gap-pulse 2.5s ease-in-out infinite;
+}
+
+.gap-badge--warning {
+  background: #fef3c7;
+  color: #92400e;
+  border: 1px solid #fcd34d;
+}
+
+.gap-badge--danger {
+  background: #fee2e2;
+  color: #991b1b;
+  border: 1px solid #fca5a5;
+}
+
+.gap-badge .material-symbols-outlined {
+  font-size: 11px;
+}
+
+@keyframes gap-pulse {
+  0%, 100% { opacity: 1; transform: translateX(-50%) scale(1); }
+  50% { opacity: 0.85; transform: translateX(-50%) scale(1.04); }
+}
+
+/* ── Segment connector override (coloured piece between nodes) ───── */
+.timeline-segment {
+  position: absolute;
+  top: 48px;
+  height: 3px;
+  z-index: 0;
+  border-radius: 2px;
+}
+
+.timeline-segment--ok {
+  background: var(--md-sys-color-primary, #6750a4);
+}
+
+.timeline-segment--warning {
+  background: repeating-linear-gradient(
+    90deg,
+    #f59e0b 0px,
+    #f59e0b 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
+
+.timeline-segment--danger {
+  background: repeating-linear-gradient(
+    90deg,
+    #ef4444 0px,
+    #ef4444 6px,
+    transparent 6px,
+    transparent 10px
+  );
+}
